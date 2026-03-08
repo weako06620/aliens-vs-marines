@@ -237,7 +237,7 @@
     📡 HÉBERGER = tu crées la partie (donne le code à ton ami)<br>
     🔗 REJOINDRE = tu entres le code de ton ami
   </div>
-  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v5.3</div>
+  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v5.4</div>
 </div>
 
 <!-- ═══ ÉCRAN 2 : HÉBERGEMENT (attente) ═══ -->
@@ -1085,10 +1085,14 @@ function clearReconnectInfo(){
 // ═══════════════════════════════════════════════
 function showBotPicker(){$('bot-picker').style.display='block';}
 function addBot(diff){
-  const enemy=myFaction==='alien'?'marine':'alien';
+  // Bot joins the faction with fewer players to balance teams
+  const ps=Object.values(players);
+  const alienCount=ps.filter(p=>p.faction==='alien').length;
+  const marineCount=ps.filter(p=>p.faction==='marine').length;
+  const botFaction=alienCount<=marineCount?'alien':'marine';
   const cfg=BOT_CFG[diff];
-  const bname=BOT_NAMES[enemy][Math.floor(Math.random()*BOT_NAMES[enemy].length)];
-  botData=makePlayer(bname,enemy);
+  const bname=BOT_NAMES[botFaction][Math.floor(Math.random()*BOT_NAMES[botFaction].length)];
+  botData=makePlayer(bname,botFaction);
   botData.isBot=true;botData.clickPow=cfg.cp;botData.raidPow=cfg.raidPow;
   botDifficulty=diff;players['bot']=botData;
   $('bot-picker').style.display='none';
