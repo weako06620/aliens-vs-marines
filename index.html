@@ -1,9 +1,14 @@
-[aliens-vs-marines-wifi (1).html](https://github.com/user-attachments/files/25824648/aliens-vs-marines-wifi.1.html)
 <!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,maximum-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#030508">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AvsM">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>Aliens vs Marines</title>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
@@ -1230,6 +1235,8 @@ document.addEventListener('click',function(e){
   const t=e.target.closest('.btn,.gtab,.fcard,.upg.can');
   if(t)sfxTap();
 },true);
+// PWA — Service Worker
+if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
 </script>
 </body>
 </html>

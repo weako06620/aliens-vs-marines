@@ -1,0 +1,25 @@
+{
+  "name": "Aliens vs Marines",
+  "short_name": "AvsM",
+  "description": "Clicker multijoueur - Aliens contre Colonial Marines",
+  "start_url": "/aliens-vs-marines/",
+  "scope": "/aliens-vs-marines/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#030508",
+  "theme_color": "#030508",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
