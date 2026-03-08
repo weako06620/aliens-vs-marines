@@ -45,6 +45,16 @@
   .room-code.alien{color:var(--alien);border-color:rgba(255,42,42,.2)}
   .room-code.marine{color:var(--marine)}
   .error{color:var(--alien);font-size:14px;margin-top:8px}
+
+  /* Lobby player cards */
+  .lobby-card{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02)}
+  .lobby-card.alien{border-color:rgba(255,42,42,.25);background:rgba(255,42,42,.06)}
+  .lobby-card.marine{border-color:rgba(58,200,255,.25);background:rgba(58,200,255,.06)}
+  .lobby-icon{font-size:22px;width:30px;text-align:center}
+  .lobby-name{flex:1;font-size:13px;font-weight:700;color:#fff}
+  .lobby-faction{font-size:10px;font-family:'Orbitron',sans-serif;letter-spacing:2px;font-weight:700}
+  .lobby-faction.alien{color:var(--alien)}
+  .lobby-faction.marine{color:var(--marine)}
   .status{font-size:14px;color:#90a4ae;margin:8px 0}
   .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
   .dot.on{background:#4aff4a}.dot.off{background:#ff4444}
@@ -179,6 +189,11 @@
     <button class="btn btn-ghost" id="btn-join" disabled onclick="showJoin()">🔗 REJOINDRE</button>
   </div>
   <div class="error" id="login-error"></div>
+  <div id="resume-section" style="display:none;margin-top:16px;padding:14px;border-radius:10px;background:rgba(255,170,0,.06);border:1px solid rgba(255,170,0,.2);max-width:280px">
+    <div style="font-family:'Orbitron',sans-serif;font-size:11px;color:#ffaa00;letter-spacing:2px;margin-bottom:6px">⏸️ PARTIE EN COURS</div>
+    <div id="resume-info" style="font-size:12px;color:#ccc;margin-bottom:10px"></div>
+    <button class="btn btn-orange" onclick="resumeGame()" style="font-size:12px;padding:10px 24px;width:100%">▶️ REPRENDRE</button>
+  </div>
   <div class="small" style="margin-top:16px">
     📡 HÉBERGER = tu crées la partie (donne le code à ton ami)<br>
     🔗 REJOINDRE = tu entres le code de ton ami
@@ -195,8 +210,9 @@
     <button class="btn btn-ghost" id="btn-share" onclick="shareCode()" style="font-size:12px;padding:10px 20px">📤 Partager</button>
   </div>
   <div id="copy-confirm" style="font-size:12px;color:#4aff4a;height:18px"></div>
-  <div class="status"><span class="dot off" id="dot-peer"></span>En attente d'un joueur...</div>
-  <div id="host-peer-info"></div>
+  <!-- LOBBY: liste des joueurs connectés -->
+  <div id="lobby-list" style="width:90%;max-width:300px;margin:12px auto;display:flex;flex-direction:column;gap:6px"></div>
+  <div class="status" id="lobby-status"><span class="dot off" id="dot-peer"></span>En attente d'un joueur...</div>
   <br>
   <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
     <button class="btn btn-orange" id="btn-add-bot" onclick="showBotPicker()">🤖 AJOUTER UN BOT</button>
@@ -511,7 +527,7 @@ let myName="",myFaction=null,isHost=false,peer=null,conn=null;
 let gameRunning=false,activeTab="shop";
 let botInterval=null,botData=null,botDifficulty=null;
 let players={},chatLog=[],raidLog=[],domState={faction:null,timer:0},gameStart=0;
-let lastRaidLogLen=0;
+let lastRaidTs=0;
 
 function makePlayer(name,faction){
   const f=FDATA[faction];
@@ -590,7 +606,7 @@ function doRaid(attacker, target, forceSuccess){
 // ═══════════════════════════════════════════════
 function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');}
 function goToLogin(){showScreen('screen-login');try{if(peer){peer.destroy();peer=null;}}catch(e){}conn=null;stopBot();gameRunning=false;}
-function backToLogin(){stopBot();gameRunning=false;try{if(peer){peer.destroy();peer=null;}}catch(e){}conn=null;players={};chatLog=[];raidLog=[];domState={faction:null,timer:0};showScreen('screen-login');}
+function backToLogin(){stopBot();gameRunning=false;clearGameState();try{if(peer){peer.destroy();peer=null;}}catch(e){}conn=null;players={};chatLog=[];raidLog=[];domState={faction:null,timer:0};showScreen('screen-login');}
 
 // ═══════════════════════════════════════════════
 // LOGIN
@@ -608,10 +624,102 @@ function checkLogin(){
 }
 
 // ═══════════════════════════════════════════════
+// PROFIL & SAUVEGARDE (localStorage)
+// ═══════════════════════════════════════════════
+function saveProfile(){
+  try{localStorage.setItem('avm_profile',JSON.stringify({name:myName,faction:myFaction}));}catch(e){}
+}
+function loadProfile(){
+  try{
+    const p=JSON.parse(localStorage.getItem('avm_profile'));
+    if(p&&p.name&&p.faction){
+      $('input-name').value=p.name;
+      pickFaction(p.faction);
+    }
+  }catch(e){}
+}
+function saveGameState(){
+  if(!gameRunning||!isHost)return;
+  try{
+    const state={roomCode:peer?.id||'',players,chatLog,raidLog,domState,gameStart,myName,myFaction,ts:Date.now()};
+    localStorage.setItem('avm_game',JSON.stringify(state));
+  }catch(e){}
+}
+function loadGameState(){
+  try{return JSON.parse(localStorage.getItem('avm_game'));}catch(e){return null;}
+}
+function clearGameState(){
+  try{localStorage.removeItem('avm_game');}catch(e){}
+}
+function hasSavedGame(){
+  const s=loadGameState();
+  if(!s)return false;
+  // Expire after 2 hours
+  if(Date.now()-s.ts>2*60*60*1000){clearGameState();return false;}
+  return true;
+}
+function showResumeButton(){
+  const s=loadGameState();
+  if(!s)return;
+  const el=$('resume-section');
+  if(el){
+    el.style.display='block';
+    $('resume-info').textContent=`${s.myName} (${s.myFaction==='alien'?'Alien':'Marine'}) — Code: ${s.roomCode}`;
+  }
+}
+
+// Load profile on page start
+loadProfile();
+if(hasSavedGame())showResumeButton();
+
+function resumeGame(){
+  const s=loadGameState();
+  if(!s)return;
+  myName=s.myName;myFaction=s.myFaction;isHost=true;
+  players=s.players;chatLog=s.chatLog||[];raidLog=s.raidLog||[];
+  domState=s.domState||{faction:null,timer:0};gameStart=s.gameStart;
+
+  // Recreate PeerJS with same room code for reconnection
+  try{
+    peer=new Peer(s.roomCode);
+    peer.on('connection',c=>{
+      conn=c;
+      c.on('open',()=>{});
+      c.on('data',d=>hostHandleMsg(d));
+    });
+  }catch(e){}
+
+  initGameUI();gameRunning=true;showScreen('screen-game');
+  // Restart game loop
+  setInterval(()=>{
+    if(!gameRunning)return;
+    try{
+      Object.values(players).forEach(p=>{
+        if(p.isBot||p.eliminated)return;
+        const eff=effectiveCPS(p);
+        if(eff>0){p.res+=eff/10;p.totalRes+=eff/10;}
+        if(p.raidCD>0)p.raidCD=Math.max(0,p.raidCD-0.1);
+      });
+      const aT=Object.values(players).filter(p=>p.faction==='alien'&&!p.eliminated).reduce((s,p)=>s+p.totalRes,0);
+      const mT=Object.values(players).filter(p=>p.faction==='marine'&&!p.eliminated).reduce((s,p)=>s+p.totalRes,0);
+      const tot=aT+mT||1;const aPct=aT/tot;
+      if(aPct>=DOM_THRESH){domState=domState.faction==='alien'?{faction:'alien',timer:domState.timer+0.1}:{faction:'alien',timer:0};}
+      else if((1-aPct)>=DOM_THRESH){domState=domState.faction==='marine'?{faction:'marine',timer:domState.timer+0.1}:{faction:'marine',timer:0};}
+      else domState={faction:null,timer:0};
+      if(domState.timer>=DOM_TIME){endGame(domState.faction,'domination',{Joueurs:Object.keys(players).length,Durée:fmtT((Date.now()-gameStart)/1000)});return;}
+      renderGame();
+      if(isHost&&Date.now()%5000<150)saveGameState();
+      if(conn&&conn.open)try{conn.send({type:'state',players,chat:chatLog,raids:raidLog,dom:domState});}catch(e){}
+    }catch(e){console.error('Game loop error:',e);}
+  },100);
+}
+
+// ═══════════════════════════════════════════════
 // HÉBERGER
 // ═══════════════════════════════════════════════
 function hostGame(){
   myName=$('input-name').value.trim();isHost=true;
+  saveProfile();
   showScreen('screen-host');
   $('room-code').textContent="...";
   $('room-code').className="room-code "+myFaction;
@@ -626,14 +734,39 @@ function hostGame(){
     peer.on('open',pid=>{$('room-code').textContent=pid;});
     peer.on('connection',c=>{
       conn=c;
-      c.on('open',()=>{$('dot-peer').className="dot on";$('host-peer-info').innerHTML=`<span style="color:#4aff4a;font-size:14px">✓ Joueur connecté !</span>`;$('btn-start').style.display='inline-block';});
+      c.on('open',()=>{$('btn-start').style.display='inline-block';});
       c.on('data',d=>hostHandleMsg(d));
-      c.on('close',()=>{$('dot-peer').className="dot off";});
+      c.on('close',()=>{updateLobby();});
     });
     peer.on('error',e=>{$('room-code').textContent="MODE LOCAL";console.warn('PeerJS error:',e);});
   }catch(e){
     console.warn('PeerJS non disponible, mode local uniquement');
     $('room-code').textContent="MODE LOCAL";
+  }
+  updateLobby();
+}
+
+function updateLobby(){
+  const list=$('lobby-list');if(!list)return;
+  const ps=Object.values(players);
+  if(ps.length===0){list.innerHTML='';return;}
+  list.innerHTML=ps.map(p=>{
+    const f=FDATA[p.faction];
+    const icon=p.isBot?'🤖':f.icon;
+    const tag=p.isBot?' (BOT)':'';
+    return `<div class="lobby-card ${p.faction}">
+      <div class="lobby-icon">${icon}</div>
+      <div class="lobby-name">${p.name}${tag}</div>
+      <div class="lobby-faction ${p.faction}">${f.name.toUpperCase()}</div>
+    </div>`;
+  }).join('');
+  const status=$('lobby-status');
+  if(status){
+    const humans=ps.filter(p=>!p.isBot).length;
+    const bots=ps.filter(p=>p.isBot).length;
+    if(humans+bots>1){
+      status.innerHTML=`<span class="dot on"></span>${humans} joueur${humans>1?'s':''}${bots?' + '+bots+' bot':''}`;
+    }
   }
 }
 
@@ -690,6 +823,8 @@ function hostHandleMsg(msg){
   if(msg.type==='join'){
     const enemy=myFaction==='alien'?'marine':'alien';
     players[guestKey]=makePlayer(msg.name,msg.faction===myFaction?enemy:msg.faction);
+    updateLobby();
+    $('btn-start').style.display='inline-block';
   }
   if(msg.type==='click'){const p=players[guestKey];if(p&&!p.eliminated){p.res+=p.clickPow;p.totalRes+=p.clickPow;}}
   if(msg.type==='buy'){const p=players[guestKey];if(p&&!p.eliminated)doBuy(p,msg.cat,msg.id);}
@@ -743,6 +878,7 @@ function addBot(diff){
   $('bot-picker').style.display='none';
   $('btn-add-bot').textContent=`🤖 ${bname} (${diff})`;$('btn-add-bot').disabled=true;
   $('btn-start').style.display='inline-block';
+  updateLobby();
 
   let lastClick=0,lastBuy=0,lastRaid=Date.now();
   botInterval=setInterval(()=>{
@@ -832,12 +968,14 @@ function startGame(){
       }
     });
     renderGame();
+    // Save game state every 5s
+    if(isHost&&Date.now()%5000<150)saveGameState();
     if(conn&&conn.open)try{conn.send({type:'state',players,chat:chatLog,raids:raidLog,dom:domState});}catch(e){}
     }catch(e){console.error('Game loop error:',e);}
   },100);
 }
 
-function endGame(winner,reason,stats){gameRunning=false;stopBot();if(conn&&conn.open)conn.send({type:'victory',winner,reason,stats});showVictory(winner,reason,stats);}
+function endGame(winner,reason,stats){gameRunning=false;stopBot();clearGameState();if(conn&&conn.open)conn.send({type:'victory',winner,reason,stats});showVictory(winner,reason,stats);}
 
 // ═══════════════════════════════════════════════
 // ACTIONS JOUEUR
@@ -1010,7 +1148,6 @@ $('chat-input').addEventListener('keydown',e=>{if(e.key==='Enter')sendChat();});
 // ABANDON
 // ═══════════════════════════════════════════════
 let abandonConfirm=false;
-let lastRaidCount=0;
 function confirmAbandon(){
   if(!gameRunning)return;
   if(!abandonConfirm){
@@ -1123,17 +1260,18 @@ function renderGame(){
   statsText+=` • ${me.clickPow.toFixed(1)}/clic • 🛡️${me.shieldHP.toFixed(1)} • ⚔️${me.raidPow.toFixed(1)}`;
   $('my-stats').textContent=statsText;
 
-  // Detect incoming raids on this player
-  if(raidLog.length>lastRaidLogLen){
-    for(let i=lastRaidLogLen;i<raidLog.length;i++){
-      const r=raidLog[i];
+  // Detect incoming raids on this player (by timestamp to survive log rotation)
+  const newRaids=raidLog.filter(r=>r.ts>lastRaidTs);
+  if(newRaids.length>0){
+    newRaids.forEach(r=>{
       if(r.ok && r.target===myName){
         const shieldOnly=r.cpsDmg<=0&&r.shieldDmg>0;
         triggerRaidImpact(shieldOnly);
         showRaidNotif(shieldOnly?`🛡️ BOUCLIER -${r.shieldDmg.toFixed(1)} par ${r.attacker}`:`💥 RAID! CPS -${r.cpsDmg.toFixed(1)} par ${r.attacker}`,shieldOnly?'#3ac8ff':'#ff4444');
+        sfxRaidHit();
       }
-    }
-    lastRaidLogLen=raidLog.length;
+    });
+    lastRaidTs=Math.max(...raidLog.map(r=>r.ts));
   }
 
   $('spectator-overlay').style.display=me.eliminated?'flex':'none';
@@ -1238,15 +1376,6 @@ function renderGame(){
       }
     }).join('');
   chatDiv.scrollTop=chatDiv.scrollHeight;
-
-  // Detect incoming raids (sound when someone raids YOU)
-  if(raidLog.length>lastRaidCount){
-    const newRaids=raidLog.slice(lastRaidCount);
-    newRaids.forEach(r=>{
-      if(r.ok&&r.target===myName)sfxRaidHit();
-    });
-    lastRaidCount=raidLog.length;
-  }
   }catch(e){console.error('Render error:',e);}
 }
 
