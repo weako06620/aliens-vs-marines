@@ -237,7 +237,7 @@
     📡 HÉBERGER = tu crées la partie (donne le code à ton ami)<br>
     🔗 REJOINDRE = tu entres le code de ton ami
   </div>
-  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v5.5</div>
+  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v5.6</div>
 </div>
 
 <!-- ═══ ÉCRAN 2 : HÉBERGEMENT (attente) ═══ -->
@@ -738,17 +738,20 @@ function checkLogin(){
 // PROFIL & SAUVEGARDE (localStorage)
 // ═══════════════════════════════════════════════
 
-// ICE servers for NAT traversal (STUN + free TURN)
+// ICE servers for NAT traversal (multiple STUN + TURN providers)
 const ICE_CFG={
   iceServers:[
     {urls:'stun:stun.l.google.com:19302'},
     {urls:'stun:stun1.l.google.com:19302'},
+    {urls:'stun:stun.cloudflare.com:3478'},
+    {urls:'stun:freestun.net:3478'},
+    {urls:'turn:freestun.net:3478',username:'free',credential:'free'},
     {urls:'turn:openrelay.metered.ca:80',username:'openrelayproject',credential:'openrelayproject'},
     {urls:'turn:openrelay.metered.ca:443',username:'openrelayproject',credential:'openrelayproject'},
     {urls:'turn:openrelay.metered.ca:443?transport=tcp',username:'openrelayproject',credential:'openrelayproject'},
   ]
 };
-const PEER_CFG={config:ICE_CFG,debug:0};
+const PEER_CFG={config:ICE_CFG,debug:1};
 
 function saveProfile(){
   try{localStorage.setItem('avm_profile',JSON.stringify({name:myName,faction:myFaction}));}catch(e){}
@@ -891,7 +894,8 @@ function hostGame(){
       c.on('data',d=>hostHandleMsg(d,gk));
       c.on('close',()=>{delete conns[gk];updateLobby();});
     });
-    peer.on('error',e=>{$('room-code').textContent="MODE LOCAL";console.warn('PeerJS error:',e);});
+    peer.on('error',e=>{console.warn('PeerJS error:',e);if(e.type==='network'||e.type==='server-error'){$('room-code').textContent="RECONNEXION...";try{peer.reconnect();}catch(er){}}else if(e.type!=='unavailable-id'){$('room-code').textContent="MODE LOCAL";}});
+    peer.on('disconnected',()=>{console.warn('Peer disconnected, reconnecting...');try{peer.reconnect();}catch(e){}});
   }catch(e){
     console.warn('PeerJS non disponible, mode local uniquement');
     $('room-code').textContent="MODE LOCAL";
@@ -958,13 +962,25 @@ function joinGame(){
   $('join-status').textContent="Connexion...";$('join-error').textContent="";isHost=false;
   try{
     peer=new Peer(PEER_CFG);
-    peer.on('open',()=>{
+    $('join-status').textContent="Connexion au serveur...";
+    let joinTimeout=setTimeout(()=>{$('join-error').textContent="Timeout — vérifiez le code et votre connexion";$('join-status').textContent="";},15000);
+    peer.on('open',(myId)=>{
+      $('join-status').textContent="Serveur OK — connexion à l'hôte...";
       guestConn=peer.connect(code,{reliable:true});
-      guestConn.on('open',()=>{guestConn.send({type:'join',name:myName,faction:myFaction});showScreen('screen-waiting');saveReconnectInfo();});
+      guestConn.on('open',()=>{
+        clearTimeout(joinTimeout);
+        guestConn.send({type:'join',name:myName,faction:myFaction});
+        showScreen('screen-waiting');saveReconnectInfo();
+      });
       guestConn.on('data',d=>guestHandleMsg(d));
-      guestConn.on('close',()=>{$('join-error').textContent="Connexion perdue";});
+      guestConn.on('close',()=>{
+        if(gameRunning){$('join-error').textContent="";showRaidNotif('🔌 Connexion perdue — reconnectez','#ff6666');}
+        else{$('join-error').textContent="Connexion perdue";}
+      });
+      guestConn.on('error',(e)=>{clearTimeout(joinTimeout);$('join-error').textContent="Erreur connexion: "+e.type;});
     });
-    peer.on('error',()=>{$('join-error').textContent="Code invalide ou hôte introuvable";});
+    peer.on('error',(e)=>{clearTimeout(joinTimeout);$('join-error').textContent="Erreur: "+(e.type==='peer-unavailable'?"Code invalide ou hôte introuvable":e.type);$('join-status').textContent="";});
+    peer.on('disconnected',()=>{try{peer.reconnect();}catch(e){}});
   }catch(e){$('join-error').textContent="Connexion impossible — vérifiez votre réseau";}
 }
 
