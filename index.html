@@ -190,6 +190,11 @@
   <div class="title">SALLE CRÉÉE</div>
   <div class="subtitle">DONNE CE CODE À TON ADVERSAIRE</div>
   <div class="room-code" id="room-code">...</div>
+  <div style="display:flex;gap:10px;justify-content:center;margin-bottom:8px">
+    <button class="btn btn-ghost" id="btn-copy" onclick="copyCode()" style="font-size:12px;padding:10px 20px">📋 Copier le code</button>
+    <button class="btn btn-ghost" id="btn-share" onclick="shareCode()" style="font-size:12px;padding:10px 20px">📤 Partager</button>
+  </div>
+  <div id="copy-confirm" style="font-size:12px;color:#4aff4a;height:18px"></div>
   <div class="status"><span class="dot off" id="dot-peer"></span>En attente d'un joueur...</div>
   <div id="host-peer-info"></div>
   <br>
@@ -635,6 +640,32 @@ function hostGame(){
 // ═══════════════════════════════════════════════
 // REJOINDRE
 // ═══════════════════════════════════════════════
+function copyCode(){
+  const code=$('room-code').textContent;
+  if(!code||code==='...'||code==='MODE LOCAL')return;
+  const url='https://weako06620.github.io/aliens-vs-marines/';
+  const text=`Rejoins ma partie Aliens vs Marines !\nCode: ${code}\n${url}`;
+  navigator.clipboard.writeText(text).then(()=>{
+    $('copy-confirm').textContent='✓ Copié !';
+    setTimeout(()=>{$('copy-confirm').textContent='';},2000);
+  }).catch(()=>{
+    // Fallback
+    const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    $('copy-confirm').textContent='✓ Copié !';
+    setTimeout(()=>{$('copy-confirm').textContent='';},2000);
+  });
+}
+
+function shareCode(){
+  const code=$('room-code').textContent;
+  if(!code||code==='...'||code==='MODE LOCAL')return;
+  const url='https://weako06620.github.io/aliens-vs-marines/';
+  const text=`Rejoins ma partie Aliens vs Marines !\nCode: ${code}\n${url}`;
+  if(navigator.share){
+    navigator.share({title:'Aliens vs Marines',text:text}).catch(()=>{});
+  }else{copyCode();}
+}
+
 function showJoin(){myName=$('input-name').value.trim();showScreen('screen-join');}
 function joinGame(){
   const code=$('input-code').value.trim().toUpperCase();if(!code)return;
