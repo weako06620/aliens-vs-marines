@@ -1,4 +1,4 @@
-const CACHE_NAME = 'avm-v1';
+const CACHE_NAME = 'avm-v3';
 const ASSETS = [
   '/aliens-vs-marines/',
   '/aliens-vs-marines/index.html',
@@ -8,9 +8,8 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())
-  );
+  self.skipWaiting();
+  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)));
 });
 
 self.addEventListener('activate', e => {
@@ -23,6 +22,10 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request))
+    fetch(e.request).then(response => {
+      const clone = response.clone();
+      caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+      return response;
+    }).catch(() => caches.match(e.request))
   );
 });
