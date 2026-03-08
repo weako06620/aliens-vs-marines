@@ -1,4 +1,4 @@
-const CACHE_NAME = 'avm-v3';
+const CACHE_NAME = 'avm-v4';
 const ASSETS = [
   '/aliens-vs-marines/',
   '/aliens-vs-marines/index.html',
