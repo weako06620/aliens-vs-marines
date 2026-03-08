@@ -15,7 +15,7 @@
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&display=swap');
   :root{--alien:#ff2a2a;--marine:#3ac8ff;--bg:#030508}
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%;height:100dvh;background:var(--bg);color:#eee;font-family:'Share Tech Mono',monospace;overflow:hidden;-webkit-user-select:none;user-select:none;touch-action:auto;overscroll-behavior:none}
+  html,body{height:100%;height:100dvh;background:var(--bg);color:#eee;font-family:'Share Tech Mono',monospace;overflow:hidden;touch-action:auto;overscroll-behavior:none}
   .scanlines{position:fixed;inset:0;z-index:9998;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.05) 2px,rgba(0,0,0,0.05) 4px)}
   .bg{position:fixed;inset:0;z-index:0}
   .bg1{background:linear-gradient(135deg,#020408,#0a0e18 30%,#0c0816 60%,#040208)}
@@ -94,6 +94,8 @@
   .score-label.alien{color:rgba(255,42,42,.75)}.score-label.marine{color:rgba(58,200,255,.75)}
   .score-stats{font-size:11px;color:#b0bec5;margin-top:1px}
 
+  .game-full,.fcard,.btn,.gtab,.upg,.click-btn,.war-section,.lobby-card{-webkit-user-select:none;user-select:none}
+  input,textarea{-webkit-user-select:text!important;user-select:text!important}
   .click-btn{width:clamp(150px,42vw,200px);height:clamp(150px,42vw,200px);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .08s;overflow:hidden;padding:0;line-height:0}
   .click-btn.alien{background:transparent;border:none;box-shadow:0 0 40px rgba(100,255,50,.15)}
   .click-btn.marine{background:transparent;border:none;box-shadow:0 0 40px rgba(58,200,255,.15)}
@@ -198,7 +200,7 @@
     📡 HÉBERGER = tu crées la partie (donne le code à ton ami)<br>
     🔗 REJOINDRE = tu entres le code de ton ami
   </div>
-  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v3.1</div>
+  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v3.2</div>
 </div>
 
 <!-- ═══ ÉCRAN 2 : HÉBERGEMENT (attente) ═══ -->
@@ -1431,7 +1433,7 @@ document.querySelectorAll('input').forEach(inp=>{
 });
 
 // Force clear old caches on load
-if('caches' in window){caches.keys().then(k=>k.filter(n=>!n.includes('v3')).forEach(n=>caches.delete(n)));}
+if('caches' in window){caches.keys().then(k=>k.filter(n=>!n.includes('v4')).forEach(n=>caches.delete(n)));}
 </script>
 </body>
 </html>
