@@ -198,6 +198,7 @@
     📡 HÉBERGER = tu crées la partie (donne le code à ton ami)<br>
     🔗 REJOINDRE = tu entres le code de ton ami
   </div>
+  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v3.0</div>
 </div>
 
 <!-- ═══ ÉCRAN 2 : HÉBERGEMENT (attente) ═══ -->
@@ -1219,6 +1220,11 @@ function switchPage(id){
     t.classList.toggle('active',isActive);
     if(f)t.querySelector('.gtab-lbl').style.color=isActive?f.color:'#b0bec5';
   });
+  // Rebuild shop/defense when opening those pages
+  if(gameRunning&&f){
+    if(id==='shop')buildShop();
+    if(id==='defense')buildDefense();
+  }
 }
 
 function buildShop(){
@@ -1395,8 +1401,29 @@ document.addEventListener('click',function(e){
   const t=e.target.closest('.btn,.gtab,.fcard,.upg.can');
   if(t)sfxTap();
 },true);
-// PWA — Service Worker
-if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
+// PWA — Auto-update system
+const APP_VERSION = 3;
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').then(reg=>{
+    // Check for updates every 30 seconds
+    setInterval(()=>{reg.update();},30000);
+    reg.addEventListener('updatefound',()=>{
+      const newSW=reg.installing;
+      newSW.addEventListener('statechange',()=>{
+        if(newSW.state==='activated'){
+          // New version available — reload
+          if(confirm('🔄 Nouvelle version disponible ! Mettre à jour ?')){
+            location.reload(true);
+          }
+        }
+      });
+    });
+  }).catch(()=>{});
+  // Also listen for controller change (forced update)
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{location.reload(true);});
+}
+// Force clear old caches on load
+if('caches' in window){caches.keys().then(k=>k.filter(n=>!n.includes('v3')).forEach(n=>caches.delete(n)));}
 </script>
 </body>
 </html>
