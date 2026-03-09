@@ -278,6 +278,11 @@
 
   /* Flak button on map */
   .flak-map-btn{margin-top:8px;padding:10px 28px;font-size:13px;letter-spacing:2px;border-radius:10px}
+  .map-scroll-hint{position:sticky;bottom:6px;float:right;margin-right:6px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:50%;pointer-events:none;transition:opacity .4s;opacity:.55;clear:both}
+  .map-scroll-hint svg{width:11px;height:11px;fill:rgba(255,255,255,.7)}
+  .map-scroll-hint.hidden{opacity:0}
+  @keyframes scrollBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(3px)}}
+  .map-scroll-hint{animation:scrollBounce 1.4s ease-in-out infinite}
   .flak-map-btn.alien{background:rgba(80,255,50,.12);color:#64ff32;border:1px solid rgba(80,255,50,.35)}
   .flak-map-btn.marine{background:rgba(255,120,0,.12);color:#ff8c00;border:1px solid rgba(255,120,0,.35)}
   .flak-map-btn.disabled{opacity:.35;cursor:not-allowed}
@@ -507,6 +512,7 @@
           <button class="btn flak-map-btn" id="flak-map-btn" onclick="tryFlak()">💥 FRAPPE</button>
           <div id="flak-map-cd" style="font-size:11px;color:#b0bec5;margin-top:3px;letter-spacing:1px"></div>
         </div>
+        <div class="map-scroll-hint" id="map-scroll-hint"><svg viewBox="0 0 10 10"><path d="M1 3l4 4 4-4"/></svg></div>
       </div>
       <!-- Page: Shop -->
       <div class="gpage" id="gpage-shop">
@@ -2021,7 +2027,7 @@ function declineInvite(){
 // ═══════════════════════════════════════════════
 // FLAK SYSTEM (acid/fire splash)
 // ═══════════════════════════════════════════════
-const FLAK_COST=50;
+const FLAK_COST=5000;
 const FLAK_CD=180;
 let flakCDTimer=0;
 let flakFirstUse=true;
@@ -2434,6 +2440,16 @@ function switchPage(id){
   activeTab=id;
   document.querySelectorAll('.gpage').forEach(p=>p.classList.remove('active'));
   const page=$('gpage-'+id);if(page)page.classList.add('active');
+  // Scroll hint: show when switching to map, auto-hide on scroll
+  if(id==='map'){
+    const mapPage=$('gpage-map');
+    const hint=$('map-scroll-hint');
+    if(hint&&mapPage){
+      hint.classList.remove('hidden');
+      const onScroll=()=>{hint.classList.add('hidden');mapPage.removeEventListener('scroll',onScroll);};
+      mapPage.addEventListener('scroll',onScroll,{passive:true});
+    }
+  }
   const f=myFaction?FDATA[myFaction]:null;
   document.querySelectorAll('.gtab').forEach(t=>{
     const isActive=t.dataset.page===id;
