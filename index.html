@@ -260,6 +260,27 @@
   @keyframes megaAcid{0%{opacity:0}3%{opacity:1;background:linear-gradient(180deg,rgba(100,255,50,.7) 0%,rgba(60,255,30,.5) 20%,rgba(40,200,20,.3) 50%,rgba(20,100,10,.15) 80%,transparent)}10%{background:linear-gradient(180deg,rgba(80,200,40,.4),rgba(50,180,20,.2) 40%,transparent)}30%{background:linear-gradient(180deg,rgba(40,100,20,.15),transparent 50%)}100%{opacity:0}}
   @keyframes shieldFlash{0%{opacity:0}10%{opacity:1;background:radial-gradient(circle,rgba(58,200,255,.4),rgba(58,200,255,.1) 60%,transparent)}100%{opacity:0}}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+
+  /* Flak strike on zone */
+  .zone-flak-overlay{position:absolute;inset:-6px;border-radius:14px;pointer-events:none;z-index:10;animation:zoneFlakAnim 2.4s ease-out forwards}
+  .zone-flak-overlay.acid{background:radial-gradient(circle,rgba(80,255,50,.9) 0%,rgba(40,200,20,.5) 40%,transparent 70%);box-shadow:0 0 30px rgba(80,255,50,.8),inset 0 0 20px rgba(80,255,50,.4)}
+  .zone-flak-overlay.fire{background:radial-gradient(circle,rgba(255,200,50,.9) 0%,rgba(255,80,0,.6) 40%,transparent 70%);box-shadow:0 0 30px rgba(255,120,0,.8),inset 0 0 20px rgba(255,60,0,.4)}
+  @keyframes zoneFlakAnim{
+    0%{opacity:0;transform:scale(.3)}
+    8%{opacity:1;transform:scale(1.4)}
+    20%{opacity:.9;transform:scale(1.1)}
+    60%{opacity:.6;transform:scale(1)}
+    100%{opacity:0;transform:scale(1.05)}
+  }
+  .zone-flak-particles{position:absolute;inset:0;pointer-events:none;z-index:11}
+  .zone-flak-particles span{position:absolute;font-size:14px;animation:flakParticle .9s ease-out forwards}
+  @keyframes flakParticle{0%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-200%) scale(.5)}}
+
+  /* Flak button on map */
+  .flak-map-btn{margin-top:8px;padding:10px 28px;font-size:13px;letter-spacing:2px;border-radius:10px}
+  .flak-map-btn.alien{background:rgba(80,255,50,.12);color:#64ff32;border:1px solid rgba(80,255,50,.35)}
+  .flak-map-btn.marine{background:rgba(255,120,0,.12);color:#ff8c00;border:1px solid rgba(255,120,0,.35)}
+  .flak-map-btn.disabled{opacity:.35;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -472,8 +493,7 @@
         </div>
         <div id="raid-grace" style="font-size:11px;color:#ffaa00;text-align:center;display:none">🕐 Raids disponibles dans <span id="grace-timer">2:00</span></div>
         <div style="display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap">
-          <button class="flak-btn" id="flak-btn" onclick="tryFlak()"><span id="flak-icon">💥</span></button>
-        <button class="btn btn-ghost raid-btn-game" id="raid-btn" onclick="tryRaid()" style="color:#ff4444;border-color:rgba(255,68,68,.3)">⚔️ RAID</button>
+          <button class="btn btn-ghost raid-btn-game" id="raid-btn" onclick="tryRaid()" style="color:#ff4444;border-color:rgba(255,68,68,.3)">⚔️ RAID</button>
           <button class="btn btn-ghost raid-btn-game" id="mega-raid-btn" onclick="tryMegaRaid()" style="color:#ff00ff;border-color:rgba(255,0,255,.3)">☠️ MÉGA RAID <span style="font-size:10px;opacity:.7">10K</span></button>
         </div>
         <div id="eliminated-list" style="font-size:12px;text-align:center"></div>
@@ -485,6 +505,10 @@
           <div class="map-grid" id="map-grid"></div>
         </div>
         <div id="map-status" style="text-align:center;font-size:11px;color:#b0bec5;margin-top:6px"></div>
+        <div style="text-align:center;margin-top:10px;padding-bottom:8px">
+          <button class="btn flak-map-btn" id="flak-map-btn" onclick="tryFlak()">💥 FRAPPE</button>
+          <div id="flak-map-cd" style="font-size:11px;color:#b0bec5;margin-top:3px;letter-spacing:1px"></div>
+        </div>
       </div>
       <!-- Page: Shop -->
       <div class="gpage" id="gpage-shop">
@@ -811,6 +835,49 @@ function sfxFlame(){
     o.type='sine';o.frequency.setValueAtTime(60,t);o.frequency.linearRampToValueAtTime(120,t+0.2);o.frequency.exponentialRampToValueAtTime(40,t+0.7);
     g2.gain.setValueAtTime(0.15,t);g2.gain.exponentialRampToValueAtTime(0.001,t+0.7);
     o.start(t);o.stop(t+0.7);
+  }catch(e){}
+}
+
+// Son caractéristique FLAK — sifflement + double explosion (toujours joué)
+function sfxFlak(faction){
+  try{
+    const ctx=getAudio();const t=ctx.currentTime;
+    // Sifflement de descente
+    const whistle=ctx.createOscillator();const gw=ctx.createGain();
+    whistle.connect(gw);gw.connect(ctx.destination);
+    whistle.type='sine';
+    if(faction==='alien'){
+      whistle.frequency.setValueAtTime(2800,t);
+      whistle.frequency.exponentialRampToValueAtTime(300,t+0.55);
+    }else{
+      whistle.frequency.setValueAtTime(2000,t);
+      whistle.frequency.exponentialRampToValueAtTime(120,t+0.45);
+    }
+    gw.gain.setValueAtTime(0.22,t);gw.gain.exponentialRampToValueAtTime(0.001,t+0.55);
+    whistle.start(t);whistle.stop(t+0.55);
+    // Double explosion principale
+    [0.5,0.75].forEach((delay,i)=>{
+      const buf=ctx.createBuffer(1,ctx.sampleRate*0.35,ctx.sampleRate);
+      const d=buf.getChannelData(0);
+      const decay=ctx.sampleRate*(0.06-i*0.01);
+      for(let j=0;j<d.length;j++)d[j]=(Math.random()*2-1)*Math.exp(-j/decay);
+      const nb=ctx.createBufferSource();nb.buffer=buf;
+      const lp=ctx.createBiquadFilter();
+      lp.type=faction==='alien'?'highpass':'lowpass';
+      lp.frequency.value=faction==='alien'?1200:700;
+      const gb=ctx.createGain();
+      nb.connect(lp);lp.connect(gb);gb.connect(ctx.destination);
+      gb.gain.setValueAtTime(i===0?0.55:0.35,t+delay);
+      gb.gain.exponentialRampToValueAtTime(0.001,t+delay+0.35);
+      nb.start(t+delay);
+    });
+    // Sub-boom basse fréquence
+    const sub=ctx.createOscillator();const gs=ctx.createGain();
+    sub.connect(gs);gs.connect(ctx.destination);
+    sub.type='sine';sub.frequency.setValueAtTime(55,t+0.5);
+    sub.frequency.exponentialRampToValueAtTime(22,t+0.9);
+    gs.gain.setValueAtTime(0.35,t+0.5);gs.gain.exponentialRampToValueAtTime(0.001,t+1.0);
+    sub.start(t+0.5);sub.stop(t+1.0);
   }catch(e){}
 }
 
@@ -1578,7 +1645,13 @@ function hostHandleMsg(msg,guestKey){
     const p=players[guestKey];if(!p||p.eliminated)return;
     if(p.res<FLAK_COST)return;
     p.res-=FLAK_COST;
-    const entry={type:'flak',from:p.name,faction:p.faction,ts:Date.now()};
+    const enemyFaction=p.faction==='alien'?'marine':'alien';
+    const enemyZones=MAP_ZONES.filter(z=>{const s=mapZones[z.id];return s&&s.owner===enemyFaction;});
+    if(enemyZones.length===0)return;
+    const targetZone=msg.zone?MAP_ZONES.find(z=>z.id===msg.zone)||enemyZones[Math.floor(Math.random()*enemyZones.length)]:enemyZones[Math.floor(Math.random()*enemyZones.length)];
+    if(!targetZone)return;
+    doFlakStrike(targetZone.id,p.faction);
+    const entry={type:'flak',from:p.name,faction:p.faction,zone:targetZone.id,zoneName:targetZone.name,ts:Date.now()};
     raidLog.push(entry);if(raidLog.length>30)raidLog.shift();
   }
   if(msg.type==='deploy'){
@@ -1959,19 +2032,24 @@ function tryFlak(){
   if(!gameRunning)return;const me=getMe();if(!me||me.eliminated)return;
   if(!flakFirstUse&&flakCDTimer>0){showRaidNotif('⏳ Flak: '+Math.ceil(flakCDTimer)+'s','#ffaa00');return;}
   if(me.res<FLAK_COST){showRaidNotif('⚠️ Coût: '+FLAK_COST,'#ffaa00');return;}
-  const enemies=Object.values(players).filter(p=>p.faction!==myFaction&&!p.eliminated);
-  if(enemies.length===0){showRaidNotif('⚠️ Aucune cible','#ff8800');return;}
+  // Trouver une zone occupée par l'ennemi
+  const enemyFaction=myFaction==='alien'?'marine':'alien';
+  const enemyZones=MAP_ZONES.filter(z=>{const s=mapZones[z.id];return s&&s.owner===enemyFaction;});
+  if(enemyZones.length===0){showRaidNotif('⚠️ Aucune base ennemie !','#ff8800');return;}
+  const targetZone=enemyZones[Math.floor(Math.random()*enemyZones.length)];
   if(isHost){
     me.res-=FLAK_COST;
     flakCDTimer=FLAK_CD;flakFirstUse=false;
-    const entry={type:'flak',from:myName,faction:myFaction,ts:Date.now()};
+    doFlakStrike(targetZone.id,myFaction);
+    const entry={type:'flak',from:myName,faction:myFaction,zone:targetZone.id,zoneName:targetZone.name,ts:Date.now()};
     raidLog.push(entry);if(raidLog.length>30)raidLog.shift();
   }else if(guestConn&&guestConn.open){
-    guestConn.send({type:'flak'});
+    guestConn.send({type:'flak',zone:targetZone.id});
     flakCDTimer=FLAK_CD;flakFirstUse=false;
   }
-  sfxRaidHit();
-  showRaidNotif(myFaction==='alien'?'🧪 ACIDE LANCÉ !':'🔥 FEU LANCÉ !',myFaction==='alien'?'#64ff32':'#ff6a00');
+  // Son flak joué quoi qu'il arrive
+  sfxFlak(myFaction);
+  showRaidNotif(myFaction==='alien'?'🧪 ACIDE sur '+targetZone.name+' !':'🔥 FEU sur '+targetZone.name+' !',myFaction==='alien'?'#64ff32':'#ff6a00');
 }
 
 function showFlakSplash(attackerFaction){
@@ -1994,6 +2072,40 @@ function showFlakSplash(attackerFaction){
     setTimeout(function(){splash.remove();},3000+i*200);
   }
   try{if(navigator.vibrate)navigator.vibrate([80,40,80]);}catch(e){}
+}
+
+// Applique la frappe flak sur une zone : remet à 0, animation si sur la map
+function doFlakStrike(zoneId,faction){
+  const state=mapZones[zoneId];if(!state)return;
+  // Remettre la zone à 0 — aucune unité, aucun propriétaire
+  state.owner=null;
+  state.alienForce=0;
+  state.marineForce=0;
+  // Animation visible uniquement sur la page map
+  if(activeTab==='map')showFlakOnZone(zoneId,faction);
+}
+
+// Affiche l'animation d'impact flak sur la zone ciblée
+function showFlakOnZone(zoneId,faction){
+  const el=$('zone-'+zoneId);if(!el)return;
+  // Overlay d'explosion
+  const overlay=document.createElement('div');
+  overlay.className='zone-flak-overlay '+(faction==='alien'?'acid':'fire');
+  el.appendChild(overlay);
+  // Particules emoji
+  const particles=document.createElement('div');
+  particles.className='zone-flak-particles';
+  const icons=faction==='alien'?['🧪','💚','☠️']:['🔥','💥','🌋'];
+  for(let i=0;i<4;i++){
+    const sp=document.createElement('span');
+    sp.textContent=icons[Math.floor(Math.random()*icons.length)];
+    sp.style.cssText=`left:${20+Math.random()*60}%;top:${20+Math.random()*60}%;animation-delay:${i*0.12}s`;
+    particles.appendChild(sp);
+  }
+  el.appendChild(particles);
+  setTimeout(()=>{overlay.remove();particles.remove();},2500);
+  // Vibration
+  try{if(navigator.vibrate)navigator.vibrate([120,40,120,40,200]);}catch(e){}
 }
 
 // PANIER D'ACHAT
@@ -2595,25 +2707,37 @@ function renderGame(){
       }
     });
     lastRaidTs=Math.max(...raidLog.map(r=>r.ts));
-    // Detect incoming flak
+    // Frappe flak reçue — son TOUJOURS joué, animation si sur la map
     newRaids.forEach(r=>{
-      if(r.type==='flak'&&r.faction!==myFaction){
-        showFlakSplash(r.faction);
+      if(r.type==='flak'){
+        sfxFlak(r.faction); // son joué quoi qu'il arrive
+        if(activeTab==='map'&&r.zone)showFlakOnZone(r.zone,r.faction);
+        // Notif si c'est une frappe ennemie sur notre camp
+        if(r.faction!==myFaction&&r.zone){
+          const zn=MAP_ZONES.find(z=>z.id===r.zone);
+          showRaidNotif((r.faction==='alien'?'🧪 ACIDE':'🔥 FEU')+' sur '+(zn?zn.name:r.zone)+' !','#ff6666');
+        }
       }
     });
   }
 
   $('spectator-overlay').style.display=me.eliminated?'flex':'none';
 
-  // Flak button
-  const fb=$('flak-btn');
+  // Flak button (page map)
+  const fb=$('flak-map-btn');
   if(fb){
-    fb.className='flak-btn '+(myFaction||'');
+    const f=FDATA[myFaction];
+    fb.className='btn flak-map-btn '+(myFaction||'');
     if(!flakFirstUse&&flakCDTimer>0){
       fb.classList.add('disabled');
-      fb.innerHTML='<span style="font-size:10px;color:#b0bec5">'+Math.ceil(flakCDTimer)+'s</span>';
+      fb.textContent='⏳ '+Math.ceil(flakCDTimer)+'s';
     }else{
-      fb.innerHTML=myFaction==='alien'?'🧪':'🔥';
+      fb.textContent=myFaction==='alien'?'🧪 ACIDE':'🔥 FEU';
+    }
+    const cdEl=$('flak-map-cd');
+    if(cdEl){
+      if(!flakFirstUse&&flakCDTimer>0){cdEl.textContent='Cooldown: '+Math.ceil(flakCDTimer)+'s';}
+      else{cdEl.innerHTML=`Coût: <b style="color:${f.color}">${FLAK_COST}</b> — Détruit une base ennemie`;}
     }
   }
   if(flakCDTimer>0)flakCDTimer=Math.max(0,flakCDTimer-0.1);
