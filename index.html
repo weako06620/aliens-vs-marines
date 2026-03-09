@@ -135,6 +135,20 @@
   .zone-lock{position:absolute;font-size:14px;opacity:.7;pointer-events:none;display:none}
   .zone.locked{opacity:.35;cursor:not-allowed}
   .zone.locked .zone-lock{display:block}
+
+  /* Shop cart */
+  .cart-bar{position:sticky;bottom:0;left:0;right:0;padding:10px 14px;background:linear-gradient(0deg,rgba(5,10,20,.98),rgba(5,10,20,.92));border-top:1px solid rgba(255,255,255,.1);display:none;z-index:50}
+  .cart-bar.visible{display:flex;align-items:center;gap:10px}
+  .cart-summary{flex:1;font-size:11px;color:#ccc}
+  .cart-total{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:900}
+  .cart-btn{padding:10px 20px;border-radius:8px;border:none;font-family:'Orbitron',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;cursor:pointer;transition:all .2s}
+  .cart-btn.alien{background:var(--alien);color:#000}
+  .cart-btn.marine{background:var(--marine);color:#000}
+  .cart-btn:active{transform:scale(.95)}
+  .cart-qty{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;font-size:10px;font-weight:900;font-family:'Orbitron',sans-serif;display:flex;align-items:center;justify-content:center;pointer-events:none}
+  .cart-qty.alien{background:var(--alien);color:#000}
+  .cart-qty.marine{background:var(--marine);color:#000}
+  .upg.in-cart{position:relative}
   .zone-force{font-size:16px;font-weight:900;pointer-events:none;text-shadow:0 2px 6px rgba(0,0,0,.9),0 0 10px rgba(0,0,0,.7);font-family:'Orbitron',sans-serif;line-height:1}
   .deploy-modal{position:fixed;inset:0;z-index:9996;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
   .deploy-box{background:linear-gradient(135deg,rgba(8,12,22,.97),rgba(12,16,28,.95));border:1px solid rgba(58,200,255,.15);border-radius:14px;padding:20px;max-width:300px;width:90%;text-align:center}
@@ -238,7 +252,7 @@
     📡 HÉBERGER = tu crées la partie (donne le code à ton ami)<br>
     🔗 REJOINDRE = tu entres le code de ton ami
   </div>
-  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v6.0</div>
+  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v6.1</div>
 </div>
 
 <!-- ═══ ÉCRAN 2 : HÉBERGEMENT (attente) ═══ -->
@@ -353,6 +367,11 @@
       <!-- Page: Shop -->
       <div class="gpage" id="gpage-shop">
         <div class="gpage-scroll" id="pane-shop"></div>
+        <div class="cart-bar" id="cart-bar">
+          <div class="cart-summary"><span id="cart-count">0</span> unité(s)<br><span class="cart-total" id="cart-cost">0</span> ressources</div>
+          <button class="btn btn-ghost" onclick="clearCart()" style="font-size:10px;padding:6px 12px">✕</button>
+          <button class="cart-btn" id="cart-buy-btn" onclick="buyCart()">ACHETER</button>
+        </div>
       </div>
       <!-- Page: Defense -->
       <div class="gpage" id="gpage-defense">
@@ -1376,6 +1395,107 @@ function handleClick(e){
   }catch(e){}
 }
 
+
+// ═══════════════════════════════════════════════
+// PANIER D'ACHAT
+// ═══════════════════════════════════════════════
+let shopCart={};
+
+function addToCart(id){
+  if(!gameRunning)return;const me=getMe();if(!me||me.eliminated)return;
+  const f=FDATA[myFaction];
+  const item=f.upgrades.find(u=>u.id===id);if(!item)return;
+  // Calculate cost for next unit (considering already carted ones)
+  const owned=(me.upgrades[id]||0)+(shopCart[id]||0);
+  const cost=getCost(item.base,owned);
+  // Check total cart cost + this item
+  if(cartTotal()+cost>me.res){showRaidNotif('⚠️ Pas assez de ressources','#ffaa00');return;}
+  shopCart[id]=(shopCart[id]||0)+1;
+  sfxTap();
+  updateCartDisplay();
+}
+
+function removeFromCart(id){
+  if(shopCart[id]&&shopCart[id]>0){
+    shopCart[id]--;
+    if(shopCart[id]<=0)delete shopCart[id];
+  }
+  sfxTap();
+  updateCartDisplay();
+}
+
+function clearCart(){
+  shopCart={};
+  updateCartDisplay();
+}
+
+function cartTotal(){
+  const me=getMe();if(!me)return 0;
+  const f=FDATA[myFaction];
+  let total=0;
+  Object.entries(shopCart).forEach(([id,qty])=>{
+    const item=f.upgrades.find(u=>u.id===id);if(!item)return;
+    for(let i=0;i<qty;i++){
+      total+=getCost(item.base,(me.upgrades[id]||0)+i);
+    }
+  });
+  return total;
+}
+
+function cartCount(){
+  return Object.values(shopCart).reduce((s,n)=>s+n,0);
+}
+
+function updateCartDisplay(){
+  const bar=$('cart-bar');if(!bar)return;
+  const count=cartCount();
+  if(count>0){
+    bar.classList.add('visible');
+    $('cart-count').textContent=count;
+    $('cart-cost').textContent=fmt(cartTotal());
+    $('cart-buy-btn').className='cart-btn '+myFaction;
+  }else{
+    bar.classList.remove('visible');
+  }
+  // Update badges on cards
+  const f=FDATA[myFaction];
+  f.upgrades.forEach(u=>{
+    const el=$('upg-'+u.id);if(!el)return;
+    const qty=shopCart[u.id]||0;
+    let qtyEl=document.getElementById('cq-'+u.id);
+    if(qty>0){
+      el.classList.add('in-cart');
+      if(!qtyEl){
+        qtyEl=document.createElement('div');qtyEl.id='cq-'+u.id;
+        qtyEl.className='cart-qty '+myFaction;
+        el.appendChild(qtyEl);
+      }
+      qtyEl.textContent=qty;
+      qtyEl.style.display='flex';
+    }else{
+      el.classList.remove('in-cart');
+      if(qtyEl)qtyEl.style.display='none';
+    }
+  });
+}
+
+function buyCart(){
+  if(!gameRunning)return;const me=getMe();if(!me||me.eliminated)return;
+  const items=Object.entries(shopCart);
+  if(items.length===0)return;
+  let success=false;
+  items.forEach(([id,qty])=>{
+    for(let i=0;i<qty;i++){
+      if(isHost){doBuy(me,'upg',id);}
+      else if(guestConn&&guestConn.open){guestConn.send({type:'buy',cat:'upg',id});}
+    }
+  });
+  sfxBuy();
+  shopCart={};
+  updateCartDisplay();
+  switchPage('map');
+}
+
 function buyItem(cat,id){
   if(!gameRunning)return;const me=getMe();if(!me||me.eliminated)return;
   if(isHost){if(doBuy(me,cat,id)){sfxBuy();switchPage('combat');}}
@@ -1612,7 +1732,8 @@ function switchPage(id){
   });
   // Rebuild shop/defense when opening those pages
   if(gameRunning&&f){
-    if(id==='shop')buildShop();
+    if(id==='shop'){buildShop();updateCartDisplay();}
+    if(id!=='shop'){shopCart={};}
     if(id==='defense')buildDefense();
     if(id==='map'){buildMap();renderMap();}
   }
@@ -1621,7 +1742,7 @@ function switchPage(id){
 function buildShop(){
   const f=FDATA[myFaction];
   $('pane-shop').innerHTML='<div style="font-size:15px;color:#90a4ae;letter-spacing:2px;text-align:center;margin-bottom:4px">PRODUCTION</div>'+
-    f.upgrades.map(u=>`<div class="upg cant ${myFaction}" id="upg-${u.id}" onclick="buyItem('upg','${u.id}')">
+    f.upgrades.map(u=>`<div class="upg cant ${myFaction}" id="upg-${u.id}" onclick="addToCart('${u.id}')">
       <div class="upg-icon">${u.sprite?spr(u.e,26):u.e}</div><div class="upg-info">
         <div class="upg-name">${u.name} <span class="upg-badge ${myFaction}" id="badge-${u.id}" style="display:none">0</span> <span id="dpl-${u.id}" style="font-size:10px;color:#ffaa00;display:none">🗺️0</span></div>
         <div class="upg-desc">${u.d} • +${u.cps}/s</div></div>
