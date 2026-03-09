@@ -238,7 +238,7 @@
     📡 HÉBERGER = tu crées la partie (donne le code à ton ami)<br>
     🔗 REJOINDRE = tu entres le code de ton ami
   </div>
-  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v5.9</div>
+  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v6.0</div>
 </div>
 
 <!-- ═══ ÉCRAN 2 : HÉBERGEMENT (attente) ═══ -->
@@ -769,7 +769,7 @@ function loadProfile(){
 function saveGameState(){
   if(!gameRunning||!isHost)return;
   try{
-    const state={roomCode:peer?.id||'',players,chatLog,raidLog,domState,gameStart,myName,myFaction,ts:Date.now()};
+    const state={roomCode:peer?.id||'',players,chatLog,raidLog,domState,mapZones,gameStart,myName,myFaction,ts:Date.now()};
     localStorage.setItem('avm_game',JSON.stringify(state));
   }catch(e){}
 }
@@ -826,7 +826,9 @@ function resumeGame(){
   if(!s)return;
   myName=s.myName;myFaction=s.myFaction;isHost=true;
   players=s.players;chatLog=s.chatLog||[];raidLog=s.raidLog||[];
-  domState=s.domState||{faction:null,timer:0};gameStart=s.gameStart;
+  domState=s.domState||{faction:null,timer:0};
+  mapZones=s.mapZones||initMapState();
+  gameStart=s.gameStart;
 
   // Recreate PeerJS with same room code for reconnection
   try{
@@ -840,7 +842,65 @@ function resumeGame(){
     });
   }catch(e){}
 
+  // Restart bot if there was one
+  const botPlayer=Object.values(players).find(p=>p.isBot);
+  if(botPlayer){
+    botData=botPlayer;
+    const diff=botData.raidPow>=1?'hard':botData.raidPow>=0.6?'normal':'easy';
+    const cfg=BOT_CFG[diff];
+    let lastClick=0,lastBuy=0,lastRaid=Date.now();
+    botInterval=setInterval(()=>{
+      const b=botData;if(!b||b.eliminated)return;
+      const now=Date.now();
+      if(now-lastClick>=cfg.ci){b.res+=b.clickPow;b.totalRes+=b.clickPow;lastClick=now;}
+      if(b.baseCPS>0){const eff=effectiveCPS(b);b.res+=eff*0.2;b.totalRes+=eff*0.2;}
+      if(now-lastBuy>=cfg.bd){
+        lastBuy=now;const f=FDATA[b.faction];
+        const buyDef=Math.random()<cfg.dr;
+        const items=buyDef?f.defs:f.upgrades;
+        const counts=buyDef?b.defenses:b.upgrades;
+        const stat=buyDef?"shieldHP":"cps";
+        const aff=items.filter(i=>b.res>=getCost(i.base,counts[i.id]||0));
+        if(aff.length>0){
+          let ch;
+          if(cfg.sm){ch=aff.reduce((best,i)=>(i[stat]/getCost(i.base,counts[i.id]||0))>(best[stat]/getCost(best.base,counts[best.id]||0))?i:best);}
+          else{ch=aff[Math.floor(Math.random()*aff.length)];}
+          const cost=getCost(ch.base,counts[ch.id]||0);b.res-=cost;counts[ch.id]=(counts[ch.id]||0)+1;
+          if(buyDef){b.shieldHP+=ch.shieldHP;}
+          else{
+            b.deployable[ch.id]=(b.deployable[ch.id]||0)+1;
+            if(ch.id===f.upgrades[0].id)b.clickPow+=0.1;
+            if(counts[ch.id]%5===0)b.raidPow+=ch.cps*0.05;
+            if(ch.raidBonus)b.raidPow+=ch.raidBonus;
+          }
+          b.baseCPS=calcBaseCPS(b.faction,b.upgrades);
+        }
+      }
+      b.raidCD=Math.max(0,(b.raidCD||0)-0.2);
+      if(b.raidCD<=0&&now-lastRaid>=cfg.rd*1000&&raidGraceLeft()<=0){
+        lastRaid=now;
+        const enemies=Object.values(players).filter(p=>p.faction!==b.faction&&!p.eliminated);
+        if(enemies.length>0){
+          const target=enemies.reduce((w,e)=>e.shieldHP<w.shieldHP?e:w);
+          doRaid(b,target);
+        }
+      }
+      if(Math.random()<0.15){
+        const bf=FDATA[b.faction];
+        const avail=bf.upgrades.filter(u=>(b.deployable[u.id]||0)>0);
+        if(avail.length>0){
+          const unit=avail[Math.floor(Math.random()*avail.length)];
+          const targets=MAP_ZONES.filter(z=>{const s=mapZones[z.id];return s&&s.owner!==b.faction&&canDeployTo(b.faction,z.id);});
+          const fallback=MAP_ZONES.filter(z=>{const s=mapZones[z.id];return s&&canDeployTo(b.faction,z.id);});
+          const pool=targets.length>0?targets:fallback;
+          if(pool.length>0){const zone=pool[Math.floor(Math.random()*pool.length)];doDeployUnit(b,unit.id,zone.id);}
+        }
+      }
+    },200);
+  }
+
   initGameUI();gameRunning=true;showScreen('screen-game');
+  buildMap();renderMap();
   // Restart game loop
   setInterval(()=>{
     if(!gameRunning)return;
