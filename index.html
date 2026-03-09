@@ -12,6 +12,9 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>Aliens vs Marines</title>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&display=swap');
   :root{--alien:#ff2a2a;--marine:#3ac8ff;--bg:#030508}
@@ -136,6 +139,20 @@
   .zone.locked{opacity:.35;cursor:not-allowed}
   .zone.locked .zone-lock{display:block}
 
+  /* Auth screens */
+  .auth-box{width:90%;max-width:300px;margin:0 auto}
+  .auth-box .field{width:100%;margin-bottom:8px}
+  .auth-tabs{display:flex;gap:0;margin-bottom:16px;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,.08)}
+  .auth-tab{flex:1;padding:10px;text-align:center;font-size:12px;font-family:'Orbitron',sans-serif;letter-spacing:2px;cursor:pointer;background:rgba(255,255,255,.02);color:#78909c;transition:all .2s}
+  .auth-tab.active{background:rgba(58,200,255,.1);color:#3ac8ff}
+  .friend-card{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);margin-bottom:6px}
+  .friend-card .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .friend-card .dot.on{background:#4aff4a}
+  .friend-card .dot.off{background:#555}
+  .profile-section{width:90%;max-width:320px;margin:12px auto;text-align:center}
+  .profile-pseudo{font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;color:#fff;margin-bottom:4px}
+  .profile-stats{font-size:11px;color:#b0bec5;letter-spacing:1px}
+
   /* Shop cart */
   .cart-bar{position:sticky;bottom:0;left:0;right:0;padding:10px 14px;background:linear-gradient(0deg,rgba(5,10,20,.98),rgba(5,10,20,.92));border-top:1px solid rgba(255,255,255,.1);display:none;z-index:50}
   .cart-bar.visible{display:flex;align-items:center;gap:10px}
@@ -223,21 +240,68 @@
 <div class="bg bg1"></div><div class="bg bg2"></div><div class="scanlines"></div>
 <div class="raid-flash" id="raid-flash"></div>
 
-<!-- ═══ ÉCRAN 1 : LOGIN ═══ -->
-<div class="screen active" id="screen-login">
+<!-- ═══ ÉCRAN 0 : AUTH (login/signup Firebase) ═══ -->
+<div class="screen active" id="screen-auth">
+  <div class="title">ALIENS vs MARINES</div>
+  <div class="subtitle">CONNEXION</div>
+  <div class="auth-box">
+    <div class="auth-tabs">
+      <div class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">CONNEXION</div>
+      <div class="auth-tab" id="tab-signup" onclick="switchAuthTab('signup')">INSCRIPTION</div>
+    </div>
+    <div id="auth-login">
+      <input class="field" id="auth-email" placeholder="Email" type="email" inputmode="email" autocomplete="email">
+      <input class="field" id="auth-pass" placeholder="Mot de passe" type="password" autocomplete="current-password">
+      <button class="btn btn-primary" onclick="doLogin()" style="width:100%;margin-top:4px">CONNEXION</button>
+    </div>
+    <div id="auth-signup" style="display:none">
+      <input class="field" id="reg-pseudo" placeholder="Pseudo (3-16 car.)" type="text" maxlength="16" inputmode="text" autocomplete="off">
+      <input class="field" id="reg-email" placeholder="Email" type="email" inputmode="email" autocomplete="email">
+      <input class="field" id="reg-pass" placeholder="Mot de passe (6+ car.)" type="password" autocomplete="new-password">
+      <button class="btn btn-primary" onclick="doSignup()" style="width:100%;margin-top:4px">CRÉER MON COMPTE</button>
+    </div>
+    <div class="error" id="auth-error" style="margin-top:8px"></div>
+    <div class="status" id="auth-status" style="margin-top:4px"></div>
+  </div>
+  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v6.3</div>
+</div>
+
+<!-- ═══ ÉCRAN 1 : LOGIN (game menu) ═══ -->
+<div class="screen" id="screen-login">
   <div class="title">ALIENS vs MARINES</div>
   <div class="subtitle">MULTIJOUEUR WiFi</div>
   <div class="faction-row">
     <div class="fcard alien" onclick="pickFaction('alien')"><div class="icon"><img src="data:image/png;base64,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" style="width:48px;height:48px;object-fit:contain;pointer-events:none"></div><div class="fname">XÉNOMORPHE</div></div>
     <div class="fcard marine" onclick="pickFaction('marine')"><div class="icon"><img src="data:image/png;base64,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" style="width:48px;height:48px;object-fit:contain;pointer-events:none"></div><div class="fname">MARINE</div></div>
   </div>
-  <input class="field" id="input-name" placeholder="Ton nom de code..." maxlength="16" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off">
+  <!-- Profile display -->
+  <div class="profile-section">
+    <div class="profile-pseudo" id="profile-pseudo">...</div>
+    <div class="profile-stats" id="profile-stats">V:0 D:0</div>
+  </div>
+  <input class="field" id="input-name" placeholder="Ton nom de code..." maxlength="16" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off" style="display:none">
   <br>
   <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:8px">
     <button class="btn btn-primary" id="btn-host" disabled onclick="hostGame()">📡 HÉBERGER</button>
     <button class="btn btn-ghost" id="btn-join" disabled onclick="showJoin()">🔗 REJOINDRE</button>
   </div>
   <div class="error" id="login-error"></div>
+  <!-- Friends section -->
+  <div style="width:90%;max-width:320px;margin:16px auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-family:'Orbitron',sans-serif;font-size:11px;color:#90a4ae;letter-spacing:2px">AMIS</div>
+      <button class="btn btn-ghost" onclick="showAddFriend()" style="font-size:10px;padding:4px 10px">+ Ajouter</button>
+    </div>
+    <div id="add-friend-box" style="display:none;margin-bottom:10px">
+      <div style="display:flex;gap:6px">
+        <input class="field" id="friend-search" placeholder="Pseudo de l'ami..." type="text" style="margin:0;flex:1;padding:10px">
+        <button class="btn btn-primary" onclick="addFriend()" style="font-size:10px;padding:8px 14px">OK</button>
+      </div>
+      <div class="error" id="friend-error" style="font-size:10px;margin-top:4px"></div>
+    </div>
+    <div id="friends-list" style="max-height:200px;overflow-y:auto"></div>
+  </div>
+  <button class="btn btn-ghost" onclick="doLogout()" style="font-size:10px;padding:6px 16px;margin-top:8px;color:#ff6666;border-color:rgba(255,68,68,.2)">DÉCONNEXION</button>
   <div id="resume-section" style="display:none;margin-top:16px;padding:14px;border-radius:10px;background:rgba(255,170,0,.06);border:1px solid rgba(255,170,0,.2);max-width:280px">
     <div style="font-family:'Orbitron',sans-serif;font-size:11px;color:#ffaa00;letter-spacing:2px;margin-bottom:6px">⏸️ PARTIE EN COURS</div>
     <div id="resume-info" style="font-size:12px;color:#ccc;margin-bottom:10px"></div>
@@ -252,7 +316,7 @@
     📡 HÉBERGER = tu crées la partie (donne le code à ton ami)<br>
     🔗 REJOINDRE = tu entres le code de ton ami
   </div>
-  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v6.2</div>
+
 </div>
 
 <!-- ═══ ÉCRAN 2 : HÉBERGEMENT (attente) ═══ -->
@@ -648,6 +712,223 @@ const getCost=(b,o)=>Math.floor(b*Math.pow(1.15,o));
 const fmtT=s=>`${Math.floor(s/60)}:${String(Math.floor(s)%60).padStart(2,"0")}`;
 const $=id=>document.getElementById(id);
 
+// ═══════════════════════════════════════════════
+// FIREBASE — AUTH + FIRESTORE
+// ═══════════════════════════════════════════════
+const fbApp=firebase.initializeApp({
+  apiKey:"AIzaSyCMI7GSXH5r7sOcZ4R9QroDL8Jm2PXa2sU",
+  authDomain:"aliens-vs-marines.firebaseapp.com",
+  projectId:"aliens-vs-marines",
+  storageBucket:"aliens-vs-marines.firebasestorage.app",
+  messagingSenderId:"98405748290",
+  appId:"1:98405748290:web:ffba2f6f301102730767db"
+});
+const auth=firebase.auth();
+const db=firebase.firestore();
+let currentUser=null;
+let userProfile=null;
+let friendsUnsub=null;
+
+// Auth tab switching
+function switchAuthTab(tab){
+  $('tab-login').classList.toggle('active',tab==='login');
+  $('tab-signup').classList.toggle('active',tab==='signup');
+  $('auth-login').style.display=tab==='login'?'block':'none';
+  $('auth-signup').style.display=tab==='signup'?'block':'none';
+  $('auth-error').textContent='';
+}
+
+// Signup
+async function doSignup(){
+  const pseudo=$('reg-pseudo').value.trim();
+  const email=$('reg-email').value.trim();
+  const pass=$('reg-pass').value;
+  $('auth-error').textContent='';
+  if(!pseudo||pseudo.length<3){$('auth-error').textContent='Pseudo: 3 caractères minimum';return;}
+  if(!email){$('auth-error').textContent='Email requis';return;}
+  if(pass.length<6){$('auth-error').textContent='Mot de passe: 6 caractères minimum';return;}
+  try{
+    $('auth-status').textContent='Création du compte...';
+    // Check pseudo uniqueness
+    const existing=await db.collection('users').where('pseudo','==',pseudo).get();
+    if(!existing.empty){$('auth-error').textContent='Ce pseudo est déjà pris';$('auth-status').textContent='';return;}
+    const cred=await auth.createUserWithEmailAndPassword(email,pass);
+    await db.collection('users').doc(cred.user.uid).set({
+      pseudo:pseudo,
+      email:email,
+      faction:null,
+      wins:0,losses:0,
+      friends:[],
+      online:true,
+      lastSeen:firebase.firestore.FieldValue.serverTimestamp(),
+      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    $('auth-status').textContent='';
+  }catch(e){
+    $('auth-status').textContent='';
+    if(e.code==='auth/email-already-in-use')$('auth-error').textContent='Email déjà utilisé';
+    else if(e.code==='auth/invalid-email')$('auth-error').textContent='Email invalide';
+    else if(e.code==='auth/weak-password')$('auth-error').textContent='Mot de passe trop faible';
+    else $('auth-error').textContent=e.message;
+  }
+}
+
+// Login
+async function doLogin(){
+  const email=$('auth-email').value.trim();
+  const pass=$('auth-pass').value;
+  $('auth-error').textContent='';
+  if(!email||!pass){$('auth-error').textContent='Email et mot de passe requis';return;}
+  try{
+    $('auth-status').textContent='Connexion...';
+    await auth.signInWithEmailAndPassword(email,pass);
+    $('auth-status').textContent='';
+  }catch(e){
+    $('auth-status').textContent='';
+    if(e.code==='auth/user-not-found'||e.code==='auth/wrong-password'||e.code==='auth/invalid-credential')$('auth-error').textContent='Email ou mot de passe incorrect';
+    else if(e.code==='auth/invalid-email')$('auth-error').textContent='Email invalide';
+    else $('auth-error').textContent=e.message;
+  }
+}
+
+// Logout
+function doLogout(){
+  auth.signOut();
+  if(friendsUnsub){friendsUnsub();friendsUnsub=null;}
+}
+
+// Auth state listener
+auth.onAuthStateChanged(async(user)=>{
+  if(user){
+    currentUser=user;
+    // Load profile
+    const doc=await db.collection('users').doc(user.uid).get();
+    if(doc.exists){
+      userProfile=doc.data();
+      myName=userProfile.pseudo;
+      if(userProfile.faction)myFaction=userProfile.faction;
+      // Set online
+      db.collection('users').doc(user.uid).update({online:true,lastSeen:firebase.firestore.FieldValue.serverTimestamp()});
+      // Setup profile display
+      enterGameMenu();
+    }else{
+      // Profile missing — create basic one
+      await db.collection('users').doc(user.uid).set({pseudo:user.email.split('@')[0],email:user.email,faction:null,wins:0,losses:0,friends:[],online:true,lastSeen:firebase.firestore.FieldValue.serverTimestamp(),createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+      userProfile={pseudo:user.email.split('@')[0],wins:0,losses:0,friends:[]};
+      myName=userProfile.pseudo;
+      enterGameMenu();
+    }
+  }else{
+    currentUser=null;userProfile=null;
+    showScreen('screen-auth');
+  }
+});
+
+// Go offline on close
+window.addEventListener('beforeunload',()=>{
+  if(currentUser)db.collection('users').doc(currentUser.uid).update({online:false,lastSeen:firebase.firestore.FieldValue.serverTimestamp()});
+});
+
+function enterGameMenu(){
+  $('profile-pseudo').textContent=userProfile.pseudo;
+  $('profile-pseudo').style.color=userProfile.faction?FDATA[userProfile.faction].color:'#fff';
+  $('profile-stats').textContent=`Victoires: ${userProfile.wins||0} • Défaites: ${userProfile.losses||0}`;
+  $('input-name').value=myName;
+  // Auto-select faction if saved
+  if(userProfile.faction){
+    myFaction=userProfile.faction;
+    document.querySelectorAll('.fcard').forEach(c=>c.classList.remove('sel'));
+    const fc=document.querySelector('.fcard.'+myFaction);if(fc)fc.classList.add('sel');
+  }
+  checkLogin();
+  loadFriends();
+  showScreen('screen-login');
+}
+
+// ═══════════════════════════════════════════════
+// FRIENDS SYSTEM
+// ═══════════════════════════════════════════════
+function showAddFriend(){
+  const box=$('add-friend-box');
+  box.style.display=box.style.display==='none'?'block':'none';
+  $('friend-error').textContent='';
+}
+
+async function addFriend(){
+  const pseudo=$('friend-search').value.trim();
+  $('friend-error').textContent='';
+  if(!pseudo){$('friend-error').textContent='Entre un pseudo';return;}
+  if(pseudo===myName){$('friend-error').textContent='Tu ne peux pas t\'ajouter toi-même';return;}
+  try{
+    const snap=await db.collection('users').where('pseudo','==',pseudo).get();
+    if(snap.empty){$('friend-error').textContent='Pseudo introuvable';return;}
+    const friendDoc=snap.docs[0];
+    const friendId=friendDoc.id;
+    // Add to both users
+    await db.collection('users').doc(currentUser.uid).update({friends:firebase.firestore.FieldValue.arrayUnion(friendId)});
+    await db.collection('users').doc(friendId).update({friends:firebase.firestore.FieldValue.arrayUnion(currentUser.uid)});
+    $('friend-search').value='';
+    $('add-friend-box').style.display='none';
+    loadFriends();
+  }catch(e){$('friend-error').textContent='Erreur: '+e.message;}
+}
+
+async function loadFriends(){
+  if(!currentUser)return;
+  const doc=await db.collection('users').doc(currentUser.uid).get();
+  if(!doc.exists)return;
+  const friendIds=doc.data().friends||[];
+  const list=$('friends-list');
+  if(friendIds.length===0){list.innerHTML='<div style="text-align:center;color:#555;font-size:11px;padding:12px">Aucun ami — ajoute des joueurs !</div>';return;}
+  let html='';
+  for(const fid of friendIds.slice(0,20)){
+    try{
+      const fdoc=await db.collection('users').doc(fid).get();
+      if(!fdoc.exists)continue;
+      const f=fdoc.data();
+      const online=f.online||false;
+      html+=`<div class="friend-card">
+        <div class="dot ${online?'on':'off'}"></div>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:700;color:#fff">${f.pseudo}</div>
+          <div style="font-size:10px;color:#78909c">V:${f.wins||0} D:${f.losses||0}</div>
+        </div>
+        <button class="btn btn-ghost" onclick="inviteFriend('${f.pseudo}')" style="font-size:9px;padding:4px 8px;${online?'':'opacity:.3;pointer-events:none'}">INVITER</button>
+      </div>`;
+    }catch(e){}
+  }
+  list.innerHTML=html;
+}
+
+function inviteFriend(pseudo){
+  // Copy room code if hosting, otherwise show message
+  const code=$('room-code')?.textContent;
+  if(code&&code!=='...'&&code!=='MODE LOCAL'){
+    const url='https://weako06620.github.io/aliens-vs-marines/';
+    const text=pseudo+' ! Rejoins ma partie Aliens vs Marines !\nCode: '+code+'\n'+url;
+    navigator.clipboard?.writeText(text);
+    showRaidNotif('📋 Invitation copiée pour '+pseudo,'#4aff4a');
+  }else{
+    showRaidNotif('⚠️ Héberge une partie d\'abord','#ffaa00');
+  }
+}
+
+// Save faction choice to Firebase
+function saveFactionToFirebase(){
+  if(currentUser&&myFaction){
+    db.collection('users').doc(currentUser.uid).update({faction:myFaction}).catch(()=>{});
+  }
+}
+
+// Update wins/losses
+function updateStats(won){
+  if(!currentUser)return;
+  const field=won?'wins':'losses';
+  db.collection('users').doc(currentUser.uid).update({[field]:firebase.firestore.FieldValue.increment(1)}).catch(()=>{});
+}
+
+
+
 // Fix mobile viewport height (Android Chrome hides tabs behind address bar)
 function fixVH(){document.documentElement.style.setProperty('--vh',window.innerHeight+'px');}
 fixVH();window.addEventListener('resize',fixVH);
@@ -744,13 +1025,15 @@ function backToLogin(){stopBot();gameRunning=false;clearGameState();clearReconne
 // ═══════════════════════════════════════════════
 function pickFaction(f){
   myFaction=f;
+  saveFactionToFirebase();
   document.querySelectorAll('.fcard').forEach(c=>c.classList.remove('sel'));
   document.querySelector(`.fcard.${f}`).classList.add('sel');
   checkLogin();
 }
 $('input-name').addEventListener('input',checkLogin);
 function checkLogin(){
-  const ok=$('input-name').value.trim()&&myFaction;
+  if(myName)$('input-name').value=myName;
+  const ok=myName&&myFaction;
   $('btn-host').disabled=!ok;$('btn-join').disabled=!ok;
 }
 
@@ -2109,6 +2392,7 @@ function renderGame(){
 }
 
 function showVictory(winner,reason,stats){
+  if(myFaction)updateStats(winner===myFaction);
   const wf=FDATA[winner];showScreen('screen-victory');
   $('victory-icon').textContent=wf.icon;$('victory-icon').style.filter=`drop-shadow(0 0 30px ${wf.color})`;
   $('victory-title').textContent=wf.name.toUpperCase()+' VICTOIRE';
