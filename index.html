@@ -238,7 +238,7 @@
     📡 HÉBERGER = tu crées la partie (donne le code à ton ami)<br>
     🔗 REJOINDRE = tu entres le code de ton ami
   </div>
-  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v5.8</div>
+  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v5.9</div>
 </div>
 
 <!-- ═══ ÉCRAN 2 : HÉBERGEMENT (attente) ═══ -->
@@ -798,8 +798,11 @@ function showResumeButton(){
 
 function doReconnect(){
   const r=getReconnectInfo();if(!r)return;
-  myName=r.name;myFaction=r.faction;
+  myName=r.name;myFaction=r.faction;isHost=false;
+  gameRunning=false;
+  $('input-name').value=r.name;
   $('input-code').value=r.code;
+  pickFaction(r.faction);
   saveProfile();
   joinGame();
 }
@@ -1044,10 +1047,12 @@ function hostHandleMsg(msg,guestKey){
     updateLobby();
     broadcastLobby();
     $('btn-start').style.display='inline-block';
-    // If game is already running, send them into the game immediately
+    // If game is already running, send FULL state to reconnecting player
     if(gameRunning){
       const c=conns[guestKey];
-      if(c&&c.open)c.send({type:'start',players,chat:chatLog,raids:raidLog,startedAt:gameStart,map:mapZones});
+      if(c&&c.open){
+        c.send({type:'rejoin',players,chat:chatLog,raids:raidLog,startedAt:gameStart,map:mapZones,dom:domState,gameRunning:true});
+      }
     }
   }
   if(msg.type==='click'){const p=players[guestKey];if(p&&!p.eliminated){p.res+=p.clickPow;p.totalRes+=p.clickPow;}}
@@ -1093,11 +1098,25 @@ function guestHandleMsg(msg){
   }
   if(msg.type==='start'){
     players=msg.players;chatLog=msg.chat||[];raidLog=msg.raids||[];gameStart=msg.startedAt;mapZones=msg.map||initMapState();
+    domState=msg.dom||{faction:null,timer:0};
     initGameUI();gameRunning=true;showScreen('screen-game');
-    // Save reconnect info
     saveReconnectInfo();
   }
-  if(msg.type==='state'){players=msg.players;chatLog=msg.chat||[];raidLog=msg.raids||[];domState=msg.dom||{faction:null,timer:0};mapZones=msg.map||mapZones;renderGame();}
+  if(msg.type==='rejoin'){
+    // Full state restore on reconnection mid-game
+    players=msg.players;chatLog=msg.chat||[];raidLog=msg.raids||[];
+    gameStart=msg.startedAt;mapZones=msg.map||initMapState();
+    domState=msg.dom||{faction:null,timer:0};gameRunning=true;
+    initGameUI();buildMap();renderMap();showScreen('screen-game');
+    renderGame();
+    saveReconnectInfo();
+  }
+  if(msg.type==='state'){
+    if(!gameRunning)return;
+    players=msg.players;chatLog=msg.chat||[];raidLog=msg.raids||[];
+    domState=msg.dom||{faction:null,timer:0};mapZones=msg.map||mapZones;
+    renderGame();
+  }
   if(msg.type==='victory'){gameRunning=false;showVictory(msg.winner,msg.reason,msg.stats);}
 }
 
@@ -1121,8 +1140,12 @@ function updateWaitingLobby(lobbyPlayers,code){
 
 function saveReconnectInfo(){
   try{
-    const roomCode=guestConn?._options?.peer||'';
-    localStorage.setItem('avm_reconnect',JSON.stringify({name:myName,faction:myFaction,code:$('waiting-code')?.textContent?.replace('CODE: ','')||'',ts:Date.now()}));
+    // Get room code from input field, waiting screen, or peer remote ID
+    const code=$('input-code')?.value?.trim()||
+               $('waiting-code')?.textContent?.replace('CODE: ','')||
+               guestConn?.peer||'';
+    if(!code)return;
+    localStorage.setItem('avm_reconnect',JSON.stringify({name:myName,faction:myFaction,code:code,ts:Date.now()}));
   }catch(e){}
 }
 
@@ -1229,7 +1252,7 @@ function startGame(){
   }
   
   initGameUI();gameRunning=true;showScreen('screen-game');
-  sendToAll({type:'start',players,chat:chatLog,raids:raidLog,startedAt:gameStart,map:mapZones});
+  sendToAll({type:'start',players,chat:chatLog,raids:raidLog,startedAt:gameStart,map:mapZones,dom:domState});
   broadcastLobby();
 
   setInterval(()=>{
