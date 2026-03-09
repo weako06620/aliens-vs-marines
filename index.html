@@ -387,7 +387,6 @@
     <button class="btn btn-ghost" id="btn-invite-friends" onclick="toggleHostFriends()" style="width:100%;font-size:11px;padding:8px;color:#3ac8ff;border-color:rgba(58,200,255,.2)">👥 INVITER DES AMIS</button>
     <div id="host-friends-list" style="display:none;margin-top:8px;max-height:180px;overflow-y:auto"></div>
   </div>
-  <div class="small" style="margin-top:10px">Les deux téléphones doivent être connectés au même WiFi<br>ou avoir accès à internet pour le code de connexion.</div>
   <button class="btn btn-ghost" onclick="leaveHostScreen()" style="margin-top:10px;font-size:11px;padding:8px 20px">← RETOUR</button>
 </div>
 
@@ -2310,7 +2309,7 @@ function initGameUI(){
   const f=FDATA[myFaction];
   $('my-res-label').textContent=f.resIcon+' '+f.res;$('my-res-label').className='score-label '+myFaction;
   $('my-score').className='score-num '+myFaction;$('click-target').className='click-btn '+myFaction;
-  if(f.targetSprite){$('click-target').innerHTML=`<div class="outer-ring"></div><div class="scan"></div><div class="inner-ring"></div><img src="${SPRITES[f.target]}" style="width:85%;height:85%;object-fit:cover;border-radius:50%;pointer-events:none;position:relative;z-index:1;filter:brightness(1.05) contrast(1.1)">`;}else{$('click-target').innerHTML=`<div class="outer-ring"></div><div class="scan"></div><div class="inner-ring"></div><span style="font-size:clamp(50px,12vw,70px);position:relative;z-index:1">${f.target}</span>`;}
+  if(f.targetSprite){$('click-target').innerHTML=`<div class="outer-ring"></div><div class="scan"></div><div class="inner-ring"></div><div style="font-size:clamp(50px,12vw,70px);position:relative;z-index:3;pointer-events:none;filter:drop-shadow(0 0 15px ${f.color})">${f.icon}</div>`;}else{$('click-target').innerHTML=`<div class="outer-ring"></div><div class="scan"></div><div class="inner-ring"></div><span style="font-size:clamp(50px,12vw,70px);position:relative;z-index:3">${f.target}</span>`;}
   $('chat-send-btn').className='chat-send '+myFaction;
   $('tab-def-label').textContent=myFaction==='alien'?'Ruche':'Déf';
   // Color the active tab
