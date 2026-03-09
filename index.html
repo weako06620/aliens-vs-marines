@@ -145,7 +145,7 @@
   .cart-btn.alien{background:var(--alien);color:#000}
   .cart-btn.marine{background:var(--marine);color:#000}
   .cart-btn:active{transform:scale(.95)}
-  .cart-qty{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;font-size:10px;font-weight:900;font-family:'Orbitron',sans-serif;display:flex;align-items:center;justify-content:center;pointer-events:none}
+  .cart-qty{display:inline-flex;min-width:18px;height:18px;border-radius:9px;font-size:10px;font-weight:900;font-family:'Orbitron',sans-serif;align-items:center;justify-content:center;pointer-events:none;margin-left:4px;padding:0 4px}
   .cart-qty.alien{background:var(--alien);color:#000}
   .cart-qty.marine{background:var(--marine);color:#000}
   .upg.in-cart{position:relative}
@@ -252,7 +252,7 @@
     📡 HÉBERGER = tu crées la partie (donne le code à ton ami)<br>
     🔗 REJOINDRE = tu entres le code de ton ami
   </div>
-  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v6.1</div>
+  <div style="margin-top:12px;font-size:9px;color:#555;letter-spacing:1px">v6.2</div>
 </div>
 
 <!-- ═══ ÉCRAN 2 : HÉBERGEMENT (attente) ═══ -->
@@ -1466,12 +1466,13 @@ function updateCartDisplay(){
     if(qty>0){
       el.classList.add('in-cart');
       if(!qtyEl){
-        qtyEl=document.createElement('div');qtyEl.id='cq-'+u.id;
+        qtyEl=document.createElement('span');qtyEl.id='cq-'+u.id;
         qtyEl.className='cart-qty '+myFaction;
-        el.appendChild(qtyEl);
+        const nameDiv=el.querySelector('.upg-name');
+        if(nameDiv)nameDiv.appendChild(qtyEl);
       }
-      qtyEl.textContent=qty;
-      qtyEl.style.display='flex';
+      qtyEl.textContent='+'+qty;
+      qtyEl.style.display='inline-flex';
     }else{
       el.classList.remove('in-cart');
       if(qtyEl)qtyEl.style.display='none';
