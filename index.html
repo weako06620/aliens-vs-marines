@@ -297,7 +297,7 @@
     <button class="btn btn-ghost" onclick="testMode()" style="margin-top:16px;font-size:10px;color:#ffaa00;border-color:rgba(255,170,0,.2)">🧪 MODE TEST (sans compte)</button>
     <div class="status" id="auth-status" style="margin-top:4px"></div>
   </div>
-  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v7.5d</div>
+  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v7.6</div>
 </div>
 
 <!-- ═══ ÉCRAN 1 : LOGIN (game menu) ═══ -->
@@ -2509,76 +2509,65 @@ function renderMap(){
 }
 
 function openDeploy(zoneId){
-  // Show a quick visual feedback that the tap was detected
   var zoneEl=$('zone-'+zoneId);
   if(zoneEl){zoneEl.style.outline='2px solid #ffaa00';setTimeout(function(){zoneEl.style.outline='';},300);}
-  // Diagnostic - find where it blocks
-  var me=getMe();
-  var state=mapZones?mapZones[zoneId]:null;
-  var f=myFaction?FDATA[myFaction]:null;
-  var deployCount=0;
-  if(me&&f){f.upgrades.forEach(function(u){deployCount+=(me.deployable[u.id]||0);});}
-  var canDeploy=canDeployTo(myFaction,zoneId);
-  alert('DIAG zone='+zoneId
-    +'\ngameRunning='+gameRunning
-    +'\nmyName='+myName
-    +'\nmyFaction='+myFaction
-    +'\nme='+(me?me.name:'NULL')
-    +'\ncanDeploy='+canDeploy
-    +'\ndeployable='+deployCount
-    +'\nstate='+(state?state.owner+'/'+Math.round(state.progress)+'%':'NULL'));
   if(!gameRunning)return;
-  if(!me||me.eliminated)return;
+  var me=getMe();if(!me||me.eliminated)return;
   const z=MAP_ZONES.find(mz=>mz.id===zoneId);if(!z)return;
   if(!canDeployTo(myFaction,zoneId)){
     var ms=$('map-status');if(ms){ms.textContent='🔒 Zone non connectée !';ms.style.color='#ff6666';}
     return;
   }
-  if(!f)return;
+  const state=mapZones[zoneId]||{owner:null,progress:0,force:0};
+  const f=FDATA[myFaction];if(!f)return;
   const avail=f.upgrades.filter(u=>(me.deployable[u.id]||0)>0);
   if(avail.length===0){
     var ms2=$('map-status');if(ms2){ms2.textContent='⚠️ Aucune unité à déployer — achète en Prod !';ms2.style.color='#ffaa00';}
     return;
   }
   selectedZone=zoneId;
+  try{
   let modal=$('deploy-modal');
   if(!modal){
     modal=document.createElement('div');modal.id='deploy-modal';
-    modal.style.cssText='position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)';
+    modal.style.cssText='position:fixed;left:0;top:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center';
     const inner=document.createElement('div');inner.id='deploy-inner';
-    inner.style.cssText='background:rgba(8,12,22,.95);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:16px;max-width:300px;width:90%;max-height:80vh;overflow-y:auto';
+    inner.style.cssText='background:#0a0e16;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:16px;max-width:300px;width:90%;max-height:80vh;overflow-y:auto';
     modal.appendChild(inner);document.body.appendChild(modal);
   }
+  modal.style.display='flex';
   const inner=$('deploy-inner');
   inner.innerHTML='';
   // Header
-  const hdr=document.createElement('div');
+  var hdr=document.createElement('div');
   hdr.style.cssText='font-size:13px;font-weight:700;color:#fff;margin-bottom:8px;text-align:center';
-  hdr.textContent=(state.owner?'🏗️ ':'🎯 ')+z.id.toUpperCase();
+  hdr.textContent=(state.owner?'🏗️ ':'🎯 ')+zoneId.toUpperCase();
   inner.appendChild(hdr);
   // Info
-  const info=document.createElement('div');
+  var info=document.createElement('div');
   info.style.cssText='font-size:10px;color:#b0bec5;text-align:center;margin-bottom:8px';
   info.textContent='Force: '+(state.force||0)+' | Progrès: '+Math.round(state.progress||0)+'%';
   inner.appendChild(info);
   // Units
-  avail.forEach(u=>{
-    const qty=me.deployable[u.id]||0;
-    const row=document.createElement('div');
+  avail.forEach(function(u){
+    var qty=me.deployable[u.id]||0;
+    var row=document.createElement('div');
     row.className='upg can '+myFaction;
-    row.style.cssText='margin:4px 0;cursor:pointer';
-    row.innerHTML='<div class="upg-icon">'+(u.sprite?spr(u.e,22):u.e)+'</div><div class="upg-info"><div class="upg-name">'+u.name+' ('+qty+') — ⚔'+u.force+'</div></div>';
+    row.style.cssText='margin:4px 0;cursor:pointer;touch-action:manipulation;padding:8px;border:1px solid rgba(255,255,255,.1);border-radius:8px';
+    row.textContent=u.name+' ('+qty+') — ⚔'+u.force;
     row.addEventListener('click',function(){deployUnit(u.id,zoneId);});
+    row.addEventListener('touchend',function(ev){ev.preventDefault();deployUnit(u.id,zoneId);});
     inner.appendChild(row);
   });
   // Close button
-  const btn=document.createElement('button');
+  var btn=document.createElement('button');
   btn.className='btn btn-ghost';
-  btn.style.cssText='margin-top:8px;width:100%;font-size:11px';
+  btn.style.cssText='margin-top:8px;width:100%;font-size:11px;touch-action:manipulation';
   btn.textContent='FERMER';
   btn.addEventListener('click',function(){modal.style.display='none';});
+  btn.addEventListener('touchend',function(ev){ev.preventDefault();modal.style.display='none';});
   inner.appendChild(btn);
-  modal.style.display='flex';
+  }catch(err){alert('ERREUR modal: '+err.message);}
 }
 
 function deployUnit(unitId,zoneId){
