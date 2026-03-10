@@ -299,7 +299,7 @@
     <button class="btn btn-ghost" onclick="testMode()" style="margin-top:16px;font-size:10px;color:#ffaa00;border-color:rgba(255,170,0,.2)">🧪 MODE TEST (sans compte)</button>
     <div class="status" id="auth-status" style="margin-top:4px"></div>
   </div>
-  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v8.1</div>
+  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v8.2</div>
 </div>
 
 <!-- ═══ ÉCRAN 1 : LOGIN (game menu) ═══ -->
@@ -474,8 +474,8 @@
     <div class="game-center" id="game-center">
       <!-- Page: Combat (default) -->
       <div class="gpage active" id="gpage-combat">
-        <div class="dom-box" id="dom-box" style="background:rgba(255,255,255,.015);border:1px solid rgba(255,255,255,.04)">
-          <div id="dom-content" style="font-size:12px;color:#90a4ae;letter-spacing:1px">⚖️ Capturez 7/10 zones pour dominer</div>
+        <div class="dom-box" id="dom-box" style="background:rgba(255,255,255,.015);border:1px solid rgba(255,255,255,.04);display:none">
+          <div id="dom-content"></div>
         </div>
         <div class="click-zone" id="click-wrap">
           <div class="click-btn" id="click-target" onclick="handleClick(event)">🥚</div>
@@ -2843,12 +2843,12 @@ function renderGame(){
   // Domination
   const db=$('dom-box'),dc=$('dom-content');
   if(domState.faction){
-    const df=FDATA[domState.faction];db.style.background=df.color+'0c';db.style.borderColor=df.color+'25';
+    const df=FDATA[domState.faction];db.style.display='block';db.style.background=df.color+'0c';db.style.borderColor=df.color+'25';
     dc.innerHTML=`<div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:700;color:${df.color};letter-spacing:2px;animation:pulse 1.5s ease-in-out infinite">${df.icon} ${df.name.toUpperCase()} DOMINE</div>
       <div class="dom-timer" style="color:${df.color};text-shadow:0 0 15px ${df.color}50">${fmtT(Math.max(0,DOM_TIME-domState.timer))}</div>
       <div class="dom-bar"><div class="dom-fill" style="background:${df.color};width:${Math.min(100,(domState.timer/DOM_TIME)*100)}%"></div></div>
       <div style="font-size:14px;color:#b0bec5;margin-top:3px">Victoire si ${ZONES_TO_WIN}+ zones tenues ${DOM_TIME/60} min</div>`;
-  }else{db.style.background='rgba(255,255,255,.015)';db.style.borderColor='rgba(255,255,255,.04)';dc.innerHTML='<span style="font-size:15px;color:#90a4ae">⚖️ Dépassez 60% pour lancer la domination</span>';}
+  }else{db.style.display='none';dc.innerHTML='';}
 
   $('eliminated-list').innerHTML=ps.filter(p=>p.eliminated).map(p=>`<span style="color:#ff6666;margin-right:6px">💀 ${p.name}${p.isBot?' 🤖':''}</span>`).join('');
 
