@@ -77,7 +77,7 @@
 
   /* Combat page — click button centered */
   #gpage-combat{align-items:center;justify-content:center;gap:14px}
-  #gpage-map{padding:10px 8px;overflow-y:auto}
+  #gpage-map{padding:10px 8px;overflow-y:auto;-webkit-overflow-scrolling:touch}
   .click-zone{position:relative;display:flex;align-items:center;justify-content:center;overflow:visible;width:clamp(160px,44vw,210px);height:clamp(160px,44vw,210px)}
   .raid-btn-game{font-size:13px;padding:10px 32px;border-radius:10px}
 
@@ -148,8 +148,8 @@
 
   /* MAP */
   .map-container{width:100%;max-width:380px;margin:0 auto;position:relative;border-radius:12px;overflow:visible;aspect-ratio:2/3;min-height:400px}
-  .map-grid{position:absolute;inset:0;z-index:1}
-  .zone{position:absolute;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;z-index:2;overflow:visible;border-radius:6px;-webkit-tap-highlight-color:transparent}
+  .map-grid{position:absolute;inset:0;z-index:1;pointer-events:auto}
+  .zone{position:absolute;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;z-index:2;overflow:visible;border-radius:6px;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
   .zone:active{transform:scale(.95)}
   .zone::before{content:"";position:absolute;inset:0;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:6px;z-index:0}
   .zone.alien::before{background:rgba(100,255,50,.08);border-color:rgba(100,255,50,.25)}
@@ -297,7 +297,7 @@
     <button class="btn btn-ghost" onclick="testMode()" style="margin-top:16px;font-size:10px;color:#ffaa00;border-color:rgba(255,170,0,.2)">🧪 MODE TEST (sans compte)</button>
     <div class="status" id="auth-status" style="margin-top:4px"></div>
   </div>
-  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v7.4</div>
+  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v7.5</div>
 </div>
 
 <!-- ═══ ÉCRAN 1 : LOGIN (game menu) ═══ -->
@@ -2436,8 +2436,10 @@ function buildMap(){
       +'<div class="zone-lock" id="zl-'+z.id+'"></div>';
     grid.appendChild(el);
   });
-  // Event delegation - single listener on grid catches all zone clicks
-  grid.addEventListener('click',function(e){
+  // Zone click/touch handler via event delegation
+  function handleZoneTap(e){
+    e.preventDefault();
+    e.stopPropagation();
     var target=e.target;
     while(target&&target!==grid){
       if(target.dataset&&target.dataset.zone){
@@ -2446,8 +2448,9 @@ function buildMap(){
       }
       target=target.parentElement;
     }
-    alert('DEBUG: clic sur grille mais pas sur une zone');
-  });
+  }
+  grid.addEventListener('touchend',handleZoneTap,{passive:false});
+  grid.addEventListener('click',handleZoneTap);
 }
 
 function renderMap(){
@@ -2506,15 +2509,23 @@ function renderMap(){
 }
 
 function openDeploy(zoneId){
-  if(!gameRunning){alert('DEBUG: jeu pas lancé');return;}
-  var me=getMe();if(!me){alert('DEBUG: joueur introuvable (myName='+myName+')');return;}
-  if(me.eliminated){alert('DEBUG: éliminé');return;}
-  const z=MAP_ZONES.find(mz=>mz.id===zoneId);if(!z){alert('DEBUG: zone '+zoneId+' introuvable');return;}
-  if(!canDeployTo(myFaction,zoneId)){alert('DEBUG: zone non connectée ('+zoneId+')');return;}
+  // Show a quick visual feedback that the tap was detected
+  var zoneEl=$('zone-'+zoneId);
+  if(zoneEl){zoneEl.style.outline='2px solid #ffaa00';setTimeout(function(){zoneEl.style.outline='';},300);}
+  if(!gameRunning)return;
+  var me=getMe();if(!me||me.eliminated)return;
+  const z=MAP_ZONES.find(mz=>mz.id===zoneId);if(!z)return;
+  if(!canDeployTo(myFaction,zoneId)){
+    var ms=$('map-status');if(ms){ms.textContent='🔒 Zone non connectée !';ms.style.color='#ff6666';}
+    return;
+  }
   const state=mapZones[zoneId]||{owner:null,progress:0,force:0};
   const f=FDATA[myFaction];
   const avail=f.upgrades.filter(u=>(me.deployable[u.id]||0)>0);
-  if(avail.length===0){alert('DEBUG: aucune unité dispo');return;}
+  if(avail.length===0){
+    var ms2=$('map-status');if(ms2){ms2.textContent='⚠️ Aucune unité à déployer — achète en Prod !';ms2.style.color='#ffaa00';}
+    return;
+  }
   selectedZone=zoneId;
   let modal=$('deploy-modal');
   if(!modal){
