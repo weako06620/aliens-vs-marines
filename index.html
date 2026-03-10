@@ -297,7 +297,7 @@
     <button class="btn btn-ghost" onclick="testMode()" style="margin-top:16px;font-size:10px;color:#ffaa00;border-color:rgba(255,170,0,.2)">🧪 MODE TEST (sans compte)</button>
     <div class="status" id="auth-status" style="margin-top:4px"></div>
   </div>
-  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v7.6</div>
+  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v7.7</div>
 </div>
 
 <!-- ═══ ÉCRAN 1 : LOGIN (game menu) ═══ -->
@@ -2527,46 +2527,38 @@ function openDeploy(zoneId){
   }
   selectedZone=zoneId;
   try{
-  let modal=$('deploy-modal');
-  if(!modal){
-    modal=document.createElement('div');modal.id='deploy-modal';
-    modal.style.cssText='position:fixed;left:0;top:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center';
-    const inner=document.createElement('div');inner.id='deploy-inner';
-    inner.style.cssText='background:#0a0e16;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:16px;max-width:300px;width:90%;max-height:80vh;overflow-y:auto';
-    modal.appendChild(inner);document.body.appendChild(modal);
-  }
-  modal.style.display='flex';
-  const inner=$('deploy-inner');
-  inner.innerHTML='';
-  // Header
+  var oldModal=$('deploy-modal');
+  if(oldModal)oldModal.remove();
+  var modal=document.createElement('div');modal.id='deploy-modal';
+  modal.style.cssText='position:fixed;left:0;top:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center';
+  var inner=document.createElement('div');
+  inner.style.cssText='background:#0a0e16;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:16px;max-width:300px;width:90%;max-height:80vh;overflow-y:auto';
+  modal.appendChild(inner);
   var hdr=document.createElement('div');
   hdr.style.cssText='font-size:13px;font-weight:700;color:#fff;margin-bottom:8px;text-align:center';
   hdr.textContent=(state.owner?'🏗️ ':'🎯 ')+zoneId.toUpperCase();
   inner.appendChild(hdr);
-  // Info
   var info=document.createElement('div');
   info.style.cssText='font-size:10px;color:#b0bec5;text-align:center;margin-bottom:8px';
-  info.textContent='Force: '+(state.force||0)+' | Progrès: '+Math.round(state.progress||0)+'%';
+  info.textContent='Force: '+(state.force||0)+' | Progres: '+Math.round(state.progress||0)+'%';
   inner.appendChild(info);
-  // Units
   avail.forEach(function(u){
     var qty=me.deployable[u.id]||0;
     var row=document.createElement('div');
-    row.className='upg can '+myFaction;
-    row.style.cssText='margin:4px 0;cursor:pointer;touch-action:manipulation;padding:8px;border:1px solid rgba(255,255,255,.1);border-radius:8px';
-    row.textContent=u.name+' ('+qty+') — ⚔'+u.force;
+    row.style.cssText='margin:6px 0;cursor:pointer;touch-action:manipulation;padding:10px;border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;font-size:12px;font-family:Orbitron,sans-serif';
+    row.textContent=u.name+' ('+qty+') - '+u.force+' force';
     row.addEventListener('click',function(){deployUnit(u.id,zoneId);});
     row.addEventListener('touchend',function(ev){ev.preventDefault();deployUnit(u.id,zoneId);});
     inner.appendChild(row);
   });
-  // Close button
   var btn=document.createElement('button');
-  btn.className='btn btn-ghost';
-  btn.style.cssText='margin-top:8px;width:100%;font-size:11px;touch-action:manipulation';
+  btn.style.cssText='margin-top:10px;width:100%;font-size:12px;touch-action:manipulation;padding:10px;border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(255,255,255,.05);color:#b0bec5;font-family:Orbitron,sans-serif;cursor:pointer';
   btn.textContent='FERMER';
-  btn.addEventListener('click',function(){modal.style.display='none';});
-  btn.addEventListener('touchend',function(ev){ev.preventDefault();modal.style.display='none';});
+  btn.addEventListener('click',function(){modal.remove();});
+  btn.addEventListener('touchend',function(ev){ev.preventDefault();modal.remove();});
   inner.appendChild(btn);
+  modal.addEventListener('click',function(ev){if(ev.target===modal)modal.remove();});
+  document.body.appendChild(modal);
   }catch(err){alert('ERREUR modal: '+err.message);}
 }
 
@@ -2574,7 +2566,7 @@ function deployUnit(unitId,zoneId){
   if(!gameRunning)return;const me=getMe();if(!me||me.eliminated)return;
   if(isHost){doDeployUnit(me,unitId,zoneId);}
   else if(guestConn&&guestConn.open){guestConn.send({type:'deploy',unit:unitId,zone:zoneId});}
-  $('deploy-modal').style.display='none';
+  var dm=$('deploy-modal');if(dm)dm.remove();
   sfxBuy();
 }
 
