@@ -147,17 +147,18 @@
   .dom-fill{height:100%;border-radius:2px;transition:width 1s}
 
   /* MAP */
-  .map-container{width:100%;max-width:380px;margin:0 auto;position:relative;border-radius:12px;overflow:visible}
-  .map-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none}
-  .map-grid{position:relative;width:100%;height:100%;z-index:1}
-  .zone{position:absolute;width:22%;height:14%;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:all .3s;border:2px solid rgba(255,255,255,.15);background:rgba(0,0,0,.3);transform:translate(-50%,-50%);-webkit-tap-highlight-color:transparent;z-index:2}
-  .zone:active{transform:translate(-50%,-50%) scale(.92)}
-  .zone.alien{border-color:rgba(255,42,42,.8);background:rgba(255,20,20,.35);box-shadow:0 0 20px rgba(255,42,42,.5),inset 0 0 20px rgba(255,42,42,.2)}
-  .zone.marine{border-color:rgba(58,200,255,.8);background:rgba(30,150,255,.35);box-shadow:0 0 20px rgba(58,200,255,.5),inset 0 0 20px rgba(58,200,255,.2)}
-  .zone.contested{border-color:rgba(255,170,0,.8);background:rgba(255,120,0,.25);box-shadow:0 0 20px rgba(255,170,0,.5);animation:pulse 1s infinite}
+  .map-container{width:100%;max-width:380px;margin:0 auto;position:relative;border-radius:12px;overflow:visible;aspect-ratio:2/3;min-height:400px}
+  .map-grid{position:absolute;inset:0;z-index:1}
+  .zone{position:absolute;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;z-index:2;overflow:visible;border-radius:6px;-webkit-tap-highlight-color:transparent}
+  .zone:active{transform:scale(.95)}
+  .zone::before{content:"";position:absolute;inset:0;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:6px;z-index:0}
+  .zone.alien::before{background:rgba(100,255,50,.08);border-color:rgba(100,255,50,.25)}
+  .zone.marine::before{background:rgba(58,200,255,.08);border-color:rgba(58,200,255,.25)}
+  .zone.locked{opacity:.35;cursor:not-allowed}
+  .zone.locked .zone-lock{display:block}
   .zone-icon{display:none}
   .zone-name{display:none}
-  .zone::before{content:"";position:absolute;inset:0;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:6px;z-index:0}
+  .zone-lock{position:absolute;font-size:14px;opacity:.7;pointer-events:none;display:none;z-index:5}
   .zone-building{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;transition:all .4s ease;filter:drop-shadow(0 3px 10px rgba(0,0,0,.9));z-index:3}
   .zone-building.lvl1{width:70%}
   .zone-building.lvl2{width:90%}
@@ -170,9 +171,6 @@
   .map-link{stroke:rgba(255,255,255,.12);stroke-width:0.4;stroke-dasharray:1.5,1}
   .map-link.active-alien{stroke:rgba(255,42,42,.5);stroke-width:0.5;stroke-dasharray:none}
   .map-link.active-marine{stroke:rgba(58,200,255,.5);stroke-width:0.5;stroke-dasharray:none}
-  .zone-lock{position:absolute;font-size:14px;opacity:.7;pointer-events:none;display:none}
-  .zone.locked{opacity:.35;cursor:not-allowed}
-  .zone.locked .zone-lock{display:block}
 
   /* Auth screens */
   .auth-box{width:90%;max-width:300px;margin:0 auto}
@@ -299,7 +297,7 @@
     <button class="btn btn-ghost" onclick="testMode()" style="margin-top:16px;font-size:10px;color:#ffaa00;border-color:rgba(255,170,0,.2)">🧪 MODE TEST (sans compte)</button>
     <div class="status" id="auth-status" style="margin-top:4px"></div>
   </div>
-  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v7.1</div>
+  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v7.2</div>
 </div>
 
 <!-- ═══ ÉCRAN 1 : LOGIN (game menu) ═══ -->
@@ -1778,6 +1776,7 @@ function startGame(){
   }
   
   initGameUI();gameRunning=true;showScreen('screen-game');
+  buildMap();renderMap();
   sendToAll({type:'start',players,chat:chatLog,raids:raidLog,startedAt:gameStart,map:mapZones,dom:domState});
   broadcastLobby();
 
@@ -2408,9 +2407,11 @@ let captureTimers={};
 
 function buildMap(){
   const container=$('map-container');if(!container)return;
-  let bgEl=container.querySelector('.map-bg');
-  if(!bgEl){bgEl=document.createElement('img');bgEl.className='map-bg';bgEl.src=SPRITES.new_map_bg;bgEl.style.cssText='width:100%;display:block;border-radius:12px';container.prepend(bgEl);}
+  container.style.backgroundImage='url('+SPRITES.new_map_bg+')';
+  container.style.backgroundSize='cover';
+  container.style.backgroundPosition='center';
   const grid=$('map-grid');if(!grid)return;
+  if(grid.children.length>0)return; // already built
   // SVG connection lines
   let svg='<svg class="map-lines" viewBox="0 0 100 100" preserveAspectRatio="none">';
   const drawn={};
@@ -2419,17 +2420,20 @@ function buildMap(){
       const key=[z.id,lid].sort().join('-');
       if(drawn[key])return;drawn[key]=true;
       const t=MAP_ZONES.find(mz=>mz.id===lid);if(!t)return;
-      svg+=`<line x1="${z.x}" y1="${z.y+z.h/2}" x2="${t.x}" y2="${t.y+t.h/2}" class="map-link" id="link-${key}"/>`;
+      svg+='<line x1="'+z.x+'" y1="'+(z.y+z.h/2)+'" x2="'+t.x+'" y2="'+(t.y+t.h/2)+'" class="map-link" id="link-'+key+'"/>';
     });
   });
   svg+='</svg>';
-  const zones=MAP_ZONES.map(z=>`<div class="zone" id="zone-${z.id}" style="left:${z.x-z.w/2}%;top:${z.y}%;width:${z.w}%;height:${z.h}%" onclick="event.stopPropagation();openDeploy('${z.id}')">
-    <img class="zone-building lvl3" id="bld-${z.id}" style="display:none">
-    <div class="zone-bar-bg"><div class="zone-bar" id="bar-${z.id}" style="width:0%"></div></div>
-    <div class="zone-force" id="zf-${z.id}" style="position:absolute;top:2px;right:4px;font-size:8px;font-weight:700;text-shadow:0 1px 4px #000;z-index:5"></div>
-    <div class="zone-lock" id="zl-${z.id}">🔒</div>
-  </div>`).join('');
-  grid.innerHTML=svg+zones;
+  let zonesHtml='';
+  MAP_ZONES.forEach(z=>{
+    zonesHtml+='<div class="zone" id="zone-'+z.id+'" style="left:'+(z.x-z.w/2)+'%;top:'+z.y+'%;width:'+z.w+'%;height:'+z.h+'%" onclick="event.stopPropagation();openDeploy(\''+z.id+'\')">'
+      +'<img class="zone-building lvl3" id="bld-'+z.id+'" style="display:none">'
+      +'<div class="zone-bar-bg"><div class="zone-bar" id="bar-'+z.id+'" style="width:0%"></div></div>'
+      +'<div class="zone-force" id="zf-'+z.id+'" style="position:absolute;top:2px;right:4px;font-size:8px;font-weight:700;text-shadow:0 1px 4px #000;z-index:5"></div>'
+      +'<div class="zone-lock" id="zl-'+z.id+'">&#x1F512;</div>'
+      +'</div>';
+  });
+  grid.innerHTML=svg+zonesHtml;
 }
 
 function renderMap(){
@@ -2687,7 +2691,7 @@ function renderGame(){
   // War bar
   const ps=Object.values(players);
   let aZones=0,mZones=0;
-  if(mapZones)Object.values(mapZones).forEach(z=>{if(z.owner==='alien')aZones++;if(z.owner==='marine')mZones++;});
+  if(mapZones)Object.values(mapZones).forEach(z=>{if(z.owner==='alien'&&z.progress>=100)aZones++;if(z.owner==='marine'&&z.progress>=100)mZones++;});
   const totZ=MAP_ZONES.length;const aPct=aZones/totZ;const mPct=mZones/totZ;
   const zThresh=ZONES_TO_WIN/totZ;
   $('war-fill-a').style.width=`${aPct*100}%`;
