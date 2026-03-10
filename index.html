@@ -156,6 +156,8 @@
   .zone.marine::before{background:rgba(58,200,255,.08);border-color:rgba(58,200,255,.25)}
   .zone.locked{opacity:.35;cursor:not-allowed}
   .zone.locked .zone-lock{display:block}
+  .zone.contested::before{animation:contestPulse 0.8s ease-in-out infinite}
+  @keyframes contestPulse{0%,100%{border-color:rgba(255,100,0,.4);box-shadow:inset 0 0 8px rgba(255,100,0,.2)}50%{border-color:rgba(255,100,0,.8);box-shadow:inset 0 0 15px rgba(255,100,0,.4)}}
   .zone-icon{display:none}
   .zone-name{display:none}
   .zone-lock{position:absolute;font-size:14px;opacity:.7;pointer-events:none;display:none;z-index:5}
@@ -297,7 +299,7 @@
     <button class="btn btn-ghost" onclick="testMode()" style="margin-top:16px;font-size:10px;color:#ffaa00;border-color:rgba(255,170,0,.2)">🧪 MODE TEST (sans compte)</button>
     <div class="status" id="auth-status" style="margin-top:4px"></div>
   </div>
-  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v8.0</div>
+  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v8.1</div>
 </div>
 
 <!-- ═══ ÉCRAN 1 : LOGIN (game menu) ═══ -->
@@ -649,7 +651,7 @@ const MAP_ZONES=[
 function initMapState(){
   const z={};
   MAP_ZONES.forEach(mz=>{
-    z[mz.id]={owner:null,progress:0,force:0,capturing:null};
+    z[mz.id]={owner:null,progress:0,force:0,contested:null};
     if(mz.base==='alien'){z[mz.id].owner='alien';z[mz.id].progress=100;z[mz.id].force=5;}
     if(mz.base==='marine'){z[mz.id].owner='marine';z[mz.id].progress=100;z[mz.id].force=5;}
   });
@@ -2471,19 +2473,27 @@ function renderMap(){
     let cls='zone';
     if(state.owner==='alien')cls+=' alien';
     else if(state.owner==='marine')cls+=' marine';
+    if(state.contested)cls+=' contested';
     if(!reachable&&!state.owner)cls+=' locked';
     el.className=cls;
-    // Force display
-    if(state.force>0){
+    // Force display - shows attacker color when contested
+    if(state.force>0||state.contested){
       zf.textContent=state.force;
-      zf.style.color=state.owner==='alien'?'#64ff32':state.owner==='marine'?'#3ac8ff':'#888';
-    }else{zf.textContent='';}
+      if(state.contested){
+        // Attacker color when zone is being attacked
+        zf.style.color=state.contested==='alien'?'#64ff32':'#3ac8ff';
+        zf.style.animation='pulse 0.5s ease-in-out infinite';
+      }else{
+        zf.style.color=state.owner==='alien'?'#64ff32':state.owner==='marine'?'#3ac8ff':'#888';
+        zf.style.animation='none';
+      }
+    }else{zf.textContent='';zf.style.animation='none';}
     // Progress bar
     if(bar){
-      bar.style.width=state.progress+'%';
+      bar.style.width=Math.max(0,state.progress)+'%';
       bar.className='zone-bar'+(state.owner?' '+state.owner+'-bar':'');
     }
-    // Building visual
+    // Building visual - stays visible as long as owner exists and progress > 0
     if(bld&&state.owner&&state.progress>0){
       bld.style.display='block';
       let level=1;
@@ -2580,57 +2590,105 @@ function doDeployUnit(player,unitId,zoneId){
   const unit=f.upgrades.find(u=>u.id===unitId);if(!unit)return;
   if((player.deployable[unitId]||0)<=0)return;
   player.deployable[unitId]--;
-  const state=mapZones[zoneId];if(!state)return;
-  const force=unit.force;
+  var state=mapZones[zoneId];if(!state)return;
+  var force=unit.force;
+  showCombatEffect(zoneId,player.faction);
+
+  // CASE 1: Zone is being reverse-captured by someone
+  if(state.contested){
+    if(player.faction===state.contested){
+      // Same faction as attacker - add to attacking force
+      state.force+=force;
+    }else if(player.faction===state.owner){
+      // Original owner reinforces! Fight attacker's remaining force
+      if(force>=state.force){
+        // Owner reclaims! Stop reverse capture
+        var leftover=force-state.force;
+        state.force=leftover;
+        state.contested=null;
+        if(captureTimers[zoneId]){clearInterval(captureTimers[zoneId]);delete captureTimers[zoneId];}
+        if(state.progress<100)startZoneCapture(zoneId,state.owner);
+      }else{
+        state.force-=force;
+      }
+    }
+    return;
+  }
+
+  // CASE 2: Normal combat - zone owned by enemy, not contested
   if(state.owner&&state.owner!==player.faction&&state.force>0){
-    // Combat against enemy
     if(force>=state.force){
       var remaining=force-state.force;
       state.force=remaining;
-      if(remaining>0){
-        // Won! Start reverse capture (bar goes DOWN)
-        startReverseCapture(zoneId,player.faction,remaining);
-      }else{
-        state.owner=null;state.progress=0;
-      }
+      state.contested=player.faction;
+      startReverseCapture(zoneId,player.faction,remaining);
     }else{
-      // Lost - just reduce defender force
       state.force-=force;
+      state.contested=player.faction;
+      setTimeout(function(){if(mapZones[zoneId])mapZones[zoneId].contested=null;},2000);
     }
-  }else if(state.owner===player.faction){
-    // Reinforce own zone
-    state.force+=force;
-    if(state.progress<100)startZoneCapture(zoneId,player.faction);
-  }else{
-    // Empty zone - take it
-    state.force=force;
-    state.owner=player.faction;
-    state.progress=0;
-    startZoneCapture(zoneId,player.faction);
+    return;
   }
+
+  // CASE 3: Zone owned by enemy but EMPTY (force=0)
+  if(state.owner&&state.owner!==player.faction&&state.force===0){
+    state.force=force;
+    state.contested=player.faction;
+    startReverseCapture(zoneId,player.faction,force);
+    return;
+  }
+
+  // CASE 4: Reinforce own zone
+  if(state.owner===player.faction){
+    state.force+=force;
+    state.contested=null;
+    if(state.progress<100)startZoneCapture(zoneId,player.faction);
+    return;
+  }
+
+  // CASE 5: Empty neutral zone
+  state.force=force;
+  state.owner=player.faction;
+  state.progress=0;
+  state.contested=null;
+  startZoneCapture(zoneId,player.faction);
+}
+
+function showCombatEffect(zoneId,attackFaction){
+  var el=$('zone-'+zoneId);if(!el)return;
+  var color=attackFaction==='alien'?'rgba(100,255,50,.6)':'rgba(58,200,255,.6)';
+  el.style.boxShadow='0 0 20px '+color+', inset 0 0 15px '+color;
+  el.style.transition='box-shadow 0.1s';
+  setTimeout(function(){
+    el.style.boxShadow='0 0 30px '+color+', inset 0 0 25px '+color;
+    setTimeout(function(){
+      el.style.boxShadow='none';
+      el.style.transition='box-shadow 0.5s';
+    },200);
+  },100);
 }
 
 function startReverseCapture(zoneId,newFaction,newForce){
   if(captureTimers[zoneId])clearInterval(captureTimers[zoneId]);
   var state=mapZones[zoneId];if(!state)return;
-  // Speed based on force
   var totalTime=10;
   if(newForce>=60)totalTime=2;
   else if(newForce>=30)totalTime=5;
+  else if(newForce===0)totalTime=20;
   var step=100/(totalTime*10);
-  // Phase 1: bar goes DOWN (destroying enemy building)
   captureTimers[zoneId]=setInterval(function(){
     var s=mapZones[zoneId];if(!s)return;
     s.progress-=step;
     if(s.progress<=0){
-      // Enemy building destroyed - flip to new owner
       s.progress=0;
-      s.owner=newFaction;
+      s.owner=newForce>0?newFaction:null;
       s.force=newForce;
+      s.contested=null;
       clearInterval(captureTimers[zoneId]);
       delete captureTimers[zoneId];
-      // Phase 2: start normal capture (bar goes UP)
-      startZoneCapture(zoneId,newFaction);
+      if(newForce>0){
+        startZoneCapture(zoneId,newFaction);
+      }
     }
   },100);
 }
