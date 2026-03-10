@@ -297,7 +297,7 @@
     <button class="btn btn-ghost" onclick="testMode()" style="margin-top:16px;font-size:10px;color:#ffaa00;border-color:rgba(255,170,0,.2)">🧪 MODE TEST (sans compte)</button>
     <div class="status" id="auth-status" style="margin-top:4px"></div>
   </div>
-  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v7.3</div>
+  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v7.4</div>
 </div>
 
 <!-- ═══ ÉCRAN 1 : LOGIN (game menu) ═══ -->
@@ -2411,7 +2411,7 @@ function buildMap(){
   container.style.backgroundSize='cover';
   container.style.backgroundPosition='center';
   const grid=$('map-grid');if(!grid)return;
-  if(grid.querySelector('.zone'))return; // already built
+  if(grid.querySelector('.zone'))return;
   // SVG connection lines
   let svg='<svg class="map-lines" viewBox="0 0 100 100" preserveAspectRatio="none">';
   const drawn={};
@@ -2425,17 +2425,28 @@ function buildMap(){
   });
   svg+='</svg>';
   grid.insertAdjacentHTML('beforeend',svg);
-  // Create zone divs with proper event listeners
   MAP_ZONES.forEach(z=>{
     const el=document.createElement('div');
     el.className='zone';el.id='zone-'+z.id;
+    el.dataset.zone=z.id;
     el.style.cssText='left:'+(z.x-z.w/2)+'%;top:'+z.y+'%;width:'+z.w+'%;height:'+z.h+'%';
     el.innerHTML='<img class="zone-building lvl3" id="bld-'+z.id+'" style="display:none">'
       +'<div class="zone-bar-bg"><div class="zone-bar" id="bar-'+z.id+'" style="width:0%"></div></div>'
       +'<div class="zone-force" id="zf-'+z.id+'" style="position:absolute;top:2px;right:4px;font-size:8px;font-weight:700;text-shadow:0 1px 4px #000;z-index:5"></div>'
       +'<div class="zone-lock" id="zl-'+z.id+'"></div>';
-    el.addEventListener('click',function(e){e.stopPropagation();openDeploy(z.id);});
     grid.appendChild(el);
+  });
+  // Event delegation - single listener on grid catches all zone clicks
+  grid.addEventListener('click',function(e){
+    var target=e.target;
+    while(target&&target!==grid){
+      if(target.dataset&&target.dataset.zone){
+        openDeploy(target.dataset.zone);
+        return;
+      }
+      target=target.parentElement;
+    }
+    alert('DEBUG: clic sur grille mais pas sur une zone');
   });
 }
 
@@ -2495,13 +2506,15 @@ function renderMap(){
 }
 
 function openDeploy(zoneId){
-  if(!gameRunning)return;const me=getMe();if(!me||me.eliminated)return;
-  const z=MAP_ZONES.find(mz=>mz.id===zoneId);if(!z)return;
-  if(!canDeployTo(myFaction,zoneId)){showRaidNotif('🔒 Zone non connectée !','#ff6666');return;}
+  if(!gameRunning){alert('DEBUG: jeu pas lancé');return;}
+  var me=getMe();if(!me){alert('DEBUG: joueur introuvable (myName='+myName+')');return;}
+  if(me.eliminated){alert('DEBUG: éliminé');return;}
+  const z=MAP_ZONES.find(mz=>mz.id===zoneId);if(!z){alert('DEBUG: zone '+zoneId+' introuvable');return;}
+  if(!canDeployTo(myFaction,zoneId)){alert('DEBUG: zone non connectée ('+zoneId+')');return;}
   const state=mapZones[zoneId]||{owner:null,progress:0,force:0};
   const f=FDATA[myFaction];
   const avail=f.upgrades.filter(u=>(me.deployable[u.id]||0)>0);
-  if(avail.length===0){showRaidNotif('⚠️ Aucune unité à déployer','#ffaa00');return;}
+  if(avail.length===0){alert('DEBUG: aucune unité dispo');return;}
   selectedZone=zoneId;
   let modal=$('deploy-modal');
   if(!modal){
