@@ -297,7 +297,7 @@
     <button class="btn btn-ghost" onclick="testMode()" style="margin-top:16px;font-size:10px;color:#ffaa00;border-color:rgba(255,170,0,.2)">🧪 MODE TEST (sans compte)</button>
     <div class="status" id="auth-status" style="margin-top:4px"></div>
   </div>
-  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v7.5</div>
+  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v7.5d</div>
 </div>
 
 <!-- ═══ ÉCRAN 1 : LOGIN (game menu) ═══ -->
@@ -2512,15 +2512,29 @@ function openDeploy(zoneId){
   // Show a quick visual feedback that the tap was detected
   var zoneEl=$('zone-'+zoneId);
   if(zoneEl){zoneEl.style.outline='2px solid #ffaa00';setTimeout(function(){zoneEl.style.outline='';},300);}
+  // Diagnostic - find where it blocks
+  var me=getMe();
+  var state=mapZones?mapZones[zoneId]:null;
+  var f=myFaction?FDATA[myFaction]:null;
+  var deployCount=0;
+  if(me&&f){f.upgrades.forEach(function(u){deployCount+=(me.deployable[u.id]||0);});}
+  var canDeploy=canDeployTo(myFaction,zoneId);
+  alert('DIAG zone='+zoneId
+    +'\ngameRunning='+gameRunning
+    +'\nmyName='+myName
+    +'\nmyFaction='+myFaction
+    +'\nme='+(me?me.name:'NULL')
+    +'\ncanDeploy='+canDeploy
+    +'\ndeployable='+deployCount
+    +'\nstate='+(state?state.owner+'/'+Math.round(state.progress)+'%':'NULL'));
   if(!gameRunning)return;
-  var me=getMe();if(!me||me.eliminated)return;
+  if(!me||me.eliminated)return;
   const z=MAP_ZONES.find(mz=>mz.id===zoneId);if(!z)return;
   if(!canDeployTo(myFaction,zoneId)){
     var ms=$('map-status');if(ms){ms.textContent='🔒 Zone non connectée !';ms.style.color='#ff6666';}
     return;
   }
-  const state=mapZones[zoneId]||{owner:null,progress:0,force:0};
-  const f=FDATA[myFaction];
+  if(!f)return;
   const avail=f.upgrades.filter(u=>(me.deployable[u.id]||0)>0);
   if(avail.length===0){
     var ms2=$('map-status');if(ms2){ms2.textContent='⚠️ Aucune unité à déployer — achète en Prod !';ms2.style.color='#ffaa00';}
