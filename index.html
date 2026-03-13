@@ -299,7 +299,7 @@
     <button class="btn btn-ghost" onclick="testMode()" style="margin-top:16px;font-size:10px;color:#ffaa00;border-color:rgba(255,170,0,.2)">🧪 MODE TEST (sans compte)</button>
     <div class="status" id="auth-status" style="margin-top:4px"></div>
   </div>
-  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v8.2</div>
+  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v8.3</div>
 </div>
 
 <!-- ═══ ÉCRAN 1 : LOGIN (game menu) ═══ -->
@@ -1060,6 +1060,7 @@ fixVH();window.addEventListener('resize',fixVH);
 let myName="",myFaction=null,isHost=false,peer=null,conns={},guestConn=null;
 let gameRunning=false,activeTab="shop";
 let botInterval=null,botData=null,botDifficulty=null;
+let gameLoopId=null,syncTick=0;
 let players={},chatLog=[],raidLog=[],domState={faction:null,timer:0},gameStart=0,mapZones={};
 let lastRaidTs=0;
 
@@ -1141,8 +1142,8 @@ function doRaid(attacker, target, forceSuccess){
 // NAVIGATION
 // ═══════════════════════════════════════════════
 function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');}
-function goToLogin(){showScreen('screen-login');try{if(peer){peer.destroy();peer=null;}}catch(e){}guestConn=null;conns={};stopBot();gameRunning=false;}
-function backToLogin(){stopBot();gameRunning=false;clearGameState();clearReconnectInfo();try{if(peer){peer.destroy();peer=null;}}catch(e){}guestConn=null;conns={};players={};chatLog=[];raidLog=[];domState={faction:null,timer:0};showScreen('screen-login');}
+function goToLogin(){showScreen('screen-login');try{if(peer){peer.destroy();peer=null;}}catch(e){}guestConn=null;conns={};stopBot();gameRunning=false;if(gameLoopId){clearInterval(gameLoopId);gameLoopId=null;}Object.keys(captureTimers).forEach(function(k){clearInterval(captureTimers[k]);});captureTimers={};}
+function backToLogin(){stopBot();gameRunning=false;if(gameLoopId){clearInterval(gameLoopId);gameLoopId=null;}Object.keys(captureTimers).forEach(function(k){clearInterval(captureTimers[k]);});captureTimers={};clearGameState();clearReconnectInfo();try{if(peer){peer.destroy();peer=null;}}catch(e){}guestConn=null;conns={};players={};chatLog=[];raidLog=[];domState={faction:null,timer:0};showScreen('screen-login');}
 
 function switchHostFaction(f){
   myFaction=f;
@@ -1293,8 +1294,9 @@ function resumeGame(){
       const gk=c.peer;
       conns[gk]=c;
       c.on('open',()=>{});
-      c.on('data',d=>hostHandleMsg(d,gk));
+      c.on('data',d=>{try{hostHandleMsg(d,gk);}catch(e){console.error('Host msg error:',e);}});
       c.on('close',()=>{delete conns[gk];});
+      c.on('error',()=>{delete conns[gk];});
     });
   }catch(e){}
 
@@ -1357,8 +1359,10 @@ function resumeGame(){
 
   initGameUI();gameRunning=true;showScreen('screen-game');
   buildMap();renderMap();
-  // Restart game loop
-  setInterval(()=>{
+  // Restart game loop (clear any previous)
+  if(gameLoopId)clearInterval(gameLoopId);
+  syncTick=0;
+  gameLoopId=setInterval(()=>{
     if(!gameRunning)return;
     try{
       Object.values(players).forEach(p=>{
@@ -1384,7 +1388,9 @@ function resumeGame(){
       });
       renderGame();
       if(isHost&&Date.now()%5000<150)saveGameState();
-      try{sendToAll({type:'state',players,chat:chatLog,raids:raidLog,dom:domState,map:mapZones});}catch(e){}
+      // Network sync every 500ms (every 5th tick) instead of every 100ms
+      syncTick++;
+      if(isHost&&syncTick%5===0){try{sendToAll({type:'state',players,chat:chatLog,raids:raidLog,dom:domState,map:mapZones});}catch(e){}}
     }catch(e){console.error('Game loop error:',e);}
   },100);
 }
@@ -1413,8 +1419,9 @@ function hostGame(){
       const gk=c.peer;
       conns[gk]=c;
       c.on('open',()=>{$('btn-start').style.display='inline-block';});
-      c.on('data',d=>hostHandleMsg(d,gk));
+      c.on('data',d=>{try{hostHandleMsg(d,gk);}catch(e){console.error('Host msg error:',e);}});
       c.on('close',()=>{delete conns[gk];updateLobby();});
+      c.on('error',()=>{delete conns[gk];});
     });
     peer.on('error',e=>{console.warn('PeerJS error:',e);if(e.type==='network'||e.type==='server-error'){$('room-code').textContent="RECONNEXION...";try{peer.reconnect();}catch(er){}}else if(e.type!=='unavailable-id'){$('room-code').textContent="MODE LOCAL";}});
     peer.on('disconnected',()=>{console.warn('Peer disconnected, reconnecting...');try{peer.reconnect();}catch(e){}});
@@ -1538,7 +1545,17 @@ function joinGame(){
 // ═══════════════════════════════════════════════
 // MULTI-CONNECTION HELPERS
 // ═══════════════════════════════════════════════
-function sendToAll(msg){Object.values(conns).forEach(c=>{try{if(c.open)c.send(msg);}catch(e){}});}
+function sendToAll(msg){
+  var data;
+  try{data=JSON.parse(JSON.stringify(msg));}catch(e){return;}
+  Object.keys(conns).forEach(function(k){
+    try{
+      var c=conns[k];
+      if(c&&c.open){c.send(data);}
+      else{delete conns[k];}
+    }catch(e){delete conns[k];}
+  });
+}
 
 function broadcastLobby(){
   const lobbyData=Object.values(players).map(p=>({name:p.name,faction:p.faction,isBot:p.isBot}));
@@ -1624,23 +1641,28 @@ function guestHandleMsg(msg){
   if(msg.type==='start'){
     players=msg.players;chatLog=msg.chat||[];raidLog=msg.raids||[];gameStart=msg.startedAt;mapZones=msg.map||initMapState();
     domState=msg.dom||{faction:null,timer:0};
-    initGameUI();gameRunning=true;showScreen('screen-game');
+    gameRunning=true;
+    initGameUI();buildMap();renderMap();showScreen('screen-game');
     saveReconnectInfo();
+    // Guest local render loop for smooth UI
+    if(gameLoopId)clearInterval(gameLoopId);
+    gameLoopId=setInterval(function(){if(gameRunning)renderGame();},200);
   }
   if(msg.type==='rejoin'){
-    // Full state restore on reconnection mid-game
     players=msg.players;chatLog=msg.chat||[];raidLog=msg.raids||[];
     gameStart=msg.startedAt;mapZones=msg.map||initMapState();
     domState=msg.dom||{faction:null,timer:0};gameRunning=true;
     initGameUI();buildMap();renderMap();showScreen('screen-game');
     renderGame();
     saveReconnectInfo();
+    if(gameLoopId)clearInterval(gameLoopId);
+    gameLoopId=setInterval(function(){if(gameRunning)renderGame();},200);
   }
   if(msg.type==='state'){
     if(!gameRunning)return;
     players=msg.players;chatLog=msg.chat||[];raidLog=msg.raids||[];
     domState=msg.dom||{faction:null,timer:0};mapZones=msg.map||mapZones;
-    renderGame();
+    if(!window._renderPending){window._renderPending=true;requestAnimationFrame(function(){renderGame();window._renderPending=false;});}
   }
   if(msg.type==='victory'){gameRunning=false;showVictory(msg.winner,msg.reason,msg.stats);}
 }
@@ -1781,7 +1803,9 @@ function startGame(){
   sendToAll({type:'start',players,chat:chatLog,raids:raidLog,startedAt:gameStart,map:mapZones,dom:domState});
   broadcastLobby();
 
-  setInterval(()=>{
+  if(gameLoopId)clearInterval(gameLoopId);
+  syncTick=0;
+  gameLoopId=setInterval(()=>{
     if(!gameRunning)return;
     try{
       // CPS pour joueurs humains
@@ -1813,14 +1837,23 @@ function startGame(){
     renderGame();
     // Save game state every 5s
     if(isHost&&Date.now()%5000<150)saveGameState();
-    try{sendToAll({type:'state',players,chat:chatLog,raids:raidLog,dom:domState,map:mapZones});}catch(e){}
+    // Network sync every 500ms (5 ticks) instead of every 100ms
+    syncTick++;
+    if(isHost&&syncTick%5===0){try{sendToAll({type:'state',players,chat:chatLog,raids:raidLog,dom:domState,map:mapZones});}catch(e){}}
     }catch(e){console.error('Game loop error:',e);}
   },100);
 }
 
-function endGame(winner,reason,stats){gameRunning=false;stopBot();clearGameState();clearReconnectInfo();
+function endGame(winner,reason,stats){
+  gameRunning=false;stopBot();clearGameState();clearReconnectInfo();
+  // Clean all intervals
+  if(gameLoopId){clearInterval(gameLoopId);gameLoopId=null;}
+  Object.keys(captureTimers).forEach(function(k){clearInterval(captureTimers[k]);});
+  captureTimers={};
   // Clean invites
-  if(currentUser)db.collection('invites').doc(currentUser.uid).delete().catch(()=>{});sendToAll({type:'victory',winner,reason,stats});showVictory(winner,reason,stats);}
+  if(currentUser)db.collection('invites').doc(currentUser.uid).delete().catch(()=>{});
+  sendToAll({type:'victory',winner,reason,stats});showVictory(winner,reason,stats);
+}
 
 // ═══════════════════════════════════════════════
 // ACTIONS JOUEUR
