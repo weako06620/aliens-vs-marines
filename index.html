@@ -299,7 +299,7 @@
     <button class="btn btn-ghost" onclick="testMode()" style="margin-top:16px;font-size:10px;color:#ffaa00;border-color:rgba(255,170,0,.2)">🧪 MODE TEST (sans compte)</button>
     <div class="status" id="auth-status" style="margin-top:4px"></div>
   </div>
-  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v8.3</div>
+  <div style="margin-top:20px;font-size:9px;color:#555;letter-spacing:1px">v8.4</div>
 </div>
 
 <!-- ═══ ÉCRAN 1 : LOGIN (game menu) ═══ -->
@@ -1061,6 +1061,8 @@ let myName="",myFaction=null,isHost=false,peer=null,conns={},guestConn=null;
 let gameRunning=false,activeTab="shop";
 let botInterval=null,botData=null,botDifficulty=null;
 let gameLoopId=null,syncTick=0;
+let lastHeartbeat=0,heartbeatId=null,reconnectAttempts=0;
+var savedHostCode=null;
 let players={},chatLog=[],raidLog=[],domState={faction:null,timer:0},gameStart=0,mapZones={};
 let lastRaidTs=0;
 
@@ -1142,8 +1144,8 @@ function doRaid(attacker, target, forceSuccess){
 // NAVIGATION
 // ═══════════════════════════════════════════════
 function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');}
-function goToLogin(){showScreen('screen-login');try{if(peer){peer.destroy();peer=null;}}catch(e){}guestConn=null;conns={};stopBot();gameRunning=false;if(gameLoopId){clearInterval(gameLoopId);gameLoopId=null;}Object.keys(captureTimers).forEach(function(k){clearInterval(captureTimers[k]);});captureTimers={};}
-function backToLogin(){stopBot();gameRunning=false;if(gameLoopId){clearInterval(gameLoopId);gameLoopId=null;}Object.keys(captureTimers).forEach(function(k){clearInterval(captureTimers[k]);});captureTimers={};clearGameState();clearReconnectInfo();try{if(peer){peer.destroy();peer=null;}}catch(e){}guestConn=null;conns={};players={};chatLog=[];raidLog=[];domState={faction:null,timer:0};showScreen('screen-login');}
+function goToLogin(){showScreen('screen-login');try{if(peer){peer.destroy();peer=null;}}catch(e){}guestConn=null;conns={};stopBot();gameRunning=false;if(gameLoopId){clearInterval(gameLoopId);gameLoopId=null;}if(heartbeatId){clearInterval(heartbeatId);heartbeatId=null;}Object.keys(captureTimers).forEach(function(k){clearInterval(captureTimers[k]);});captureTimers={};var cs=$('conn-status');if(cs)cs.remove();}
+function backToLogin(){stopBot();gameRunning=false;if(gameLoopId){clearInterval(gameLoopId);gameLoopId=null;}if(heartbeatId){clearInterval(heartbeatId);heartbeatId=null;}Object.keys(captureTimers).forEach(function(k){clearInterval(captureTimers[k]);});captureTimers={};clearGameState();clearReconnectInfo();try{if(peer){peer.destroy();peer=null;}}catch(e){}guestConn=null;conns={};players={};chatLog=[];raidLog=[];domState={faction:null,timer:0};var cs=$('conn-status');if(cs)cs.remove();showScreen('screen-login');}
 
 function switchHostFaction(f){
   myFaction=f;
@@ -1390,7 +1392,8 @@ function resumeGame(){
       if(isHost&&Date.now()%5000<150)saveGameState();
       // Network sync every 500ms (every 5th tick) instead of every 100ms
       syncTick++;
-      if(isHost&&syncTick%5===0){try{sendToAll({type:'state',players,chat:chatLog,raids:raidLog,dom:domState,map:mapZones});}catch(e){}}
+      if(isHost&&syncTick%5===0){try{sendToAll({type:'state',players,chat:chatLog,raids:raidLog,dom:domState,map:mapZones,t:Date.now()});}catch(e){}}
+      if(isHost&&syncTick%30===0){try{sendToAll({type:'ping',t:Date.now()});}catch(e){}}
     }catch(e){console.error('Game loop error:',e);}
   },100);
 }
@@ -1514,11 +1517,15 @@ function joinGame(){
         clearTimeout(joinTimeout);clearTimeout(connTimeout);
         $('join-status').textContent="✅ 2/3 — ✅ 3/3 Connecté !";
         guestConn.send({type:'join',name:myName,faction:myFaction});
+        savedHostCode=code;
+        lastHeartbeat=Date.now();
+        reconnectAttempts=0;
+        startHeartbeatMonitor();
         setTimeout(()=>{showScreen('screen-waiting');saveReconnectInfo();},500);
       });
-      guestConn.on('data',d=>guestHandleMsg(d));
+      guestConn.on('data',d=>{lastHeartbeat=Date.now();guestHandleMsg(d);});
       guestConn.on('close',()=>{
-        if(gameRunning){showRaidNotif('🔌 Déconnecté — reconnectez','#ff6666');}
+        if(gameRunning){showConnStatus('lost');tryAutoReconnect();}
         else{showScreen('screen-join');$('join-error').textContent="Connexion perdue avec l'hôte";}
       });
       guestConn.on('error',(e)=>{
@@ -1555,6 +1562,102 @@ function sendToAll(msg){
       else{delete conns[k];}
     }catch(e){delete conns[k];}
   });
+}
+
+// ═══════════════════════════════════════════════
+// HEARTBEAT & AUTO-RECONNECT (Guest)
+// ═══════════════════════════════════════════════
+function startHeartbeatMonitor(){
+  if(heartbeatId)clearInterval(heartbeatId);
+  heartbeatId=setInterval(function(){
+    if(!gameRunning||isHost)return;
+    var elapsed=(Date.now()-lastHeartbeat)/1000;
+    var indicator=$('conn-status');
+    if(elapsed<4){
+      showConnStatus('ok');
+    }else if(elapsed<8){
+      showConnStatus('weak');
+    }else{
+      showConnStatus('lost');
+      tryAutoReconnect();
+    }
+  },2000);
+}
+
+function showConnStatus(status){
+  var el=$('conn-status');
+  if(!el){
+    el=document.createElement('div');el.id='conn-status';
+    el.style.cssText='position:fixed;top:4px;right:4px;z-index:99990;font-size:10px;padding:3px 8px;border-radius:10px;font-family:Orbitron,sans-serif;pointer-events:none;transition:all .3s';
+    document.body.appendChild(el);
+  }
+  if(status==='ok'){
+    el.textContent='🟢 Connecté';el.style.background='rgba(0,50,0,.8)';el.style.color='#64ff32';el.style.opacity='1';
+    setTimeout(function(){el.style.opacity='0';},2000);
+  }else if(status==='weak'){
+    el.textContent='🟡 Signal faible';el.style.background='rgba(50,40,0,.9)';el.style.color='#ffaa00';el.style.opacity='1';
+  }else if(status==='lost'){
+    el.textContent='🔴 Déconnecté...';el.style.background='rgba(60,0,0,.9)';el.style.color='#ff4444';el.style.opacity='1';
+  }else if(status==='reconnecting'){
+    el.textContent='🔄 Reconnexion...';el.style.background='rgba(0,30,60,.9)';el.style.color='#3ac8ff';el.style.opacity='1';
+  }
+}
+
+function tryAutoReconnect(){
+  if(isHost||!savedHostCode||reconnectAttempts>=5)return;
+  reconnectAttempts++;
+  showConnStatus('reconnecting');
+  console.log('Auto-reconnect attempt '+reconnectAttempts+'/5 to '+savedHostCode);
+  try{
+    // Close old connection
+    if(guestConn){try{guestConn.close();}catch(e){}}
+    guestConn=null;
+    // If peer is dead, recreate it
+    if(!peer||peer.destroyed){
+      peer=new Peer(null,{debug:0,config:{iceServers:[
+        {urls:'stun:stun.l.google.com:19302'},
+        {urls:'stun:stun1.l.google.com:19302'},
+        {urls:'turn:openrelay.metered.ca:80',username:'openrelayproject',credential:'openrelayproject'},
+        {urls:'turn:openrelay.metered.ca:443',username:'openrelayproject',credential:'openrelayproject'}
+      ]}});
+      peer.on('open',function(){doReconnectToHost();});
+      peer.on('error',function(e){
+        console.warn('Reconnect peer error:',e.type);
+        setTimeout(function(){tryAutoReconnect();},3000);
+      });
+      peer.on('disconnected',function(){try{peer.reconnect();}catch(e){}});
+    }else if(peer.disconnected){
+      try{peer.reconnect();setTimeout(function(){doReconnectToHost();},1000);}catch(e){setTimeout(function(){tryAutoReconnect();},3000);}
+    }else{
+      doReconnectToHost();
+    }
+  }catch(e){console.error('Reconnect error:',e);setTimeout(function(){tryAutoReconnect();},3000);}
+}
+
+function doReconnectToHost(){
+  if(!savedHostCode)return;
+  try{
+    guestConn=peer.connect(savedHostCode,{reliable:true,serialization:'json'});
+    var reconTimeout=setTimeout(function(){
+      console.warn('Reconnect timeout');
+      setTimeout(function(){tryAutoReconnect();},2000);
+    },10000);
+    guestConn.on('open',function(){
+      clearTimeout(reconTimeout);
+      lastHeartbeat=Date.now();
+      reconnectAttempts=0;
+      showConnStatus('ok');
+      guestConn.send({type:'join',name:myName,faction:myFaction});
+    });
+    guestConn.on('data',function(d){lastHeartbeat=Date.now();guestHandleMsg(d);});
+    guestConn.on('close',function(){
+      if(gameRunning){showConnStatus('lost');setTimeout(function(){tryAutoReconnect();},2000);}
+    });
+    guestConn.on('error',function(){
+      clearTimeout(reconTimeout);
+      setTimeout(function(){tryAutoReconnect();},3000);
+    });
+  }catch(e){console.error('doReconnectToHost error:',e);setTimeout(function(){tryAutoReconnect();},3000);}
 }
 
 function broadcastLobby(){
@@ -1634,6 +1737,10 @@ function hostHandleMsg(msg,guestKey){
 }
 
 function guestHandleMsg(msg){
+  if(msg.type==='ping'){
+    if(guestConn&&guestConn.open)try{guestConn.send({type:'pong'});}catch(e){}
+    return;
+  }
   if(msg.type==='lobby'){
     // Update waiting room
     updateWaitingLobby(msg.players,msg.code);
@@ -1644,6 +1751,8 @@ function guestHandleMsg(msg){
     gameRunning=true;
     initGameUI();buildMap();renderMap();showScreen('screen-game');
     saveReconnectInfo();
+    lastHeartbeat=Date.now();
+    startHeartbeatMonitor();
     // Guest local render loop for smooth UI
     if(gameLoopId)clearInterval(gameLoopId);
     gameLoopId=setInterval(function(){if(gameRunning)renderGame();},200);
@@ -1839,7 +1948,9 @@ function startGame(){
     if(isHost&&Date.now()%5000<150)saveGameState();
     // Network sync every 500ms (5 ticks) instead of every 100ms
     syncTick++;
-    if(isHost&&syncTick%5===0){try{sendToAll({type:'state',players,chat:chatLog,raids:raidLog,dom:domState,map:mapZones});}catch(e){}}
+    if(isHost&&syncTick%5===0){try{sendToAll({type:'state',players,chat:chatLog,raids:raidLog,dom:domState,map:mapZones,t:Date.now()});}catch(e){}}
+    // Host heartbeat every 3s (30 ticks)
+    if(isHost&&syncTick%30===0){try{sendToAll({type:'ping',t:Date.now()});}catch(e){}}
     }catch(e){console.error('Game loop error:',e);}
   },100);
 }
@@ -1848,6 +1959,7 @@ function endGame(winner,reason,stats){
   gameRunning=false;stopBot();clearGameState();clearReconnectInfo();
   // Clean all intervals
   if(gameLoopId){clearInterval(gameLoopId);gameLoopId=null;}
+  if(heartbeatId){clearInterval(heartbeatId);heartbeatId=null;}
   Object.keys(captureTimers).forEach(function(k){clearInterval(captureTimers[k]);});
   captureTimers={};
   // Clean invites
